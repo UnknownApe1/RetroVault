@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>RomManager</AssemblyName>
+    <Version>1.2.2</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RomManager.Core\RomManager.Core.csproj" />
+    <ProjectReference Include="..\RomManager.Database\RomManager.Database.csproj" />
+    <ProjectReference Include="..\RomManager.Formats\RomManager.Formats.csproj" />
+    <ProjectReference Include="..\RomManager.Infrastructure\RomManager.Infrastructure.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+</Project>

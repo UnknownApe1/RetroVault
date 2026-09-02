@@ -1,0 +1,119 @@
+<Window x:Class="RomManager.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ROM Manager" Width="1380" Height="840" MinWidth="1050" MinHeight="650"
+        WindowStartupLocation="CenterScreen">
+  <Grid Background="{StaticResource WindowBrush}">
+    <Grid.RowDefinitions><RowDefinition Height="70"/><RowDefinition Height="*"/><RowDefinition Height="42"/></Grid.RowDefinitions>
+
+    <Border Grid.Row="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="18,10">
+      <DockPanel LastChildFill="True">
+        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+          <Button Content="Add Folder" Command="{Binding AddFolderCommand}"/>
+          <Button Content="Scan Now" Command="{Binding ScanCommand}" Style="{StaticResource AccentButton}"/>
+          <Button Content="Cancel" Command="{Binding CancelCommand}"/>
+        </StackPanel>
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="ROM MANAGER" FontSize="22" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+          <TextBlock Text="Safe, read-only game library index" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12"/>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <Grid Grid.Row="1">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="270"/><ColumnDefinition Width="*" MinWidth="450"/><ColumnDefinition Width="390"/></Grid.ColumnDefinitions>
+
+      <Border Grid.Column="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="14">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/><RowDefinition Height="*" MinHeight="150"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="135"/><RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <TextBlock Grid.Row="0" Text="SYSTEMS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource SecondaryTextBrush}" Margin="5,2,0,7"/>
+          <ListBox Grid.Row="1" ItemsSource="{Binding Systems}" SelectedItem="{Binding SelectedSystem}" DisplayMemberPath="Name"
+                   ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.CanContentScroll="True"/>
+          <Border Grid.Row="2" Height="1" Background="{StaticResource BorderBrush}" Margin="0,11,0,11"/>
+          <TextBlock Grid.Row="3" Text="SCAN LOCATIONS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource SecondaryTextBrush}" Margin="5,0,0,7"/>
+          <ListBox Grid.Row="4" ItemsSource="{Binding ScanLocations}" SelectedItem="{Binding SelectedLocation}" ScrollViewer.VerticalScrollBarVisibility="Auto">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Margin="1,2">
+                  <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}"/>
+                  <TextBlock FontSize="10" Foreground="{StaticResource MutedTextBrush}">
+                    <Run Text="Enabled: "/><Run Text="{Binding Enabled}"/><Run Text="   Recursive: "/><Run Text="{Binding Recursive}"/>
+                  </TextBlock>
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <WrapPanel Grid.Row="5" Margin="0,7,0,0">
+            <Button Content="{Binding LocationToggleLabel}" Command="{Binding ToggleLocationCommand}"/>
+            <Button Content="{Binding RecursiveToggleLabel}" Command="{Binding ToggleRecursiveCommand}"/>
+            <Button Content="Remove" Command="{Binding RemoveFolderCommand}"/>
+          </WrapPanel>
+        </Grid>
+      </Border>
+
+      <Grid Grid.Column="1" Margin="16">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <TextBox Grid.Row="0" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" FontSize="15" ToolTip="Search title, filename, or path"/>
+        <ListView Grid.Row="1" Margin="3,11,3,0" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}">
+          <ListView.View><GridView>
+            <GridViewColumn Header="GAME" Width="315" DisplayMemberBinding="{Binding Title}"/>
+            <GridViewColumn Header="SYSTEM" Width="195" DisplayMemberBinding="{Binding System}"/>
+            <GridViewColumn Header="FILES" Width="65" DisplayMemberBinding="{Binding FileCount}"/>
+            <GridViewColumn Header="STATUS" Width="95" DisplayMemberBinding="{Binding WorstStatus}"/>
+          </GridView></ListView.View>
+        </ListView>
+      </Grid>
+
+      <Border Grid.Column="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0" Padding="18">
+        <Grid>
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <StackPanel>
+            <TextBlock Text="{Binding GameDetails.CanonicalTitle, FallbackValue=Select a game}" FontSize="22" FontWeight="SemiBold"
+                       Foreground="{StaticResource TextBrush}" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding GameDetails.SystemDefinition.Name}" Foreground="{StaticResource AccentBrush}" FontSize="14" FontWeight="SemiBold" Margin="0,4,0,16"/>
+          </StackPanel>
+          <TextBlock Grid.Row="1" Text="VERSIONS / FILES" FontSize="11" FontWeight="Bold" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8"/>
+          <ListBox Grid.Row="2" ItemsSource="{Binding DetailFiles}" SelectedItem="{Binding SelectedFile}" ScrollViewer.VerticalScrollBarVisibility="Auto">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Border Background="{StaticResource RaisedBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="5" Padding="11" Margin="0,0,0,8">
+                  <StackPanel>
+                    <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding FullPath}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                      <TextBlock Text="{Binding Region}" Foreground="{StaticResource AccentBrush}"/>
+                      <TextBlock Text="  |  " Foreground="{StaticResource MutedTextBrush}"/><TextBlock Text="{Binding Status}"/>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <WrapPanel Grid.Row="3" Margin="0,8,0,0">
+            <Button Content="Open Folder" Command="{Binding OpenFolderCommand}"/><Button Content="Copy Path" Command="{Binding CopyPathCommand}"/>
+            <Button Content="Verify SHA-256" Command="{Binding VerifyHashCommand}"/>
+          </WrapPanel>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <Border Grid.Row="2" Background="#070D17" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,0">
+      <Grid VerticalAlignment="Center">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="420"/></Grid.ColumnDefinitions>
+        <StackPanel Grid.Column="0" Orientation="Horizontal">
+          <TextBlock Text="{Binding Counts.Games, StringFormat={}{0:N0} Games}"/><TextBlock Text="  |  " Foreground="{StaticResource MutedTextBrush}"/>
+          <TextBlock Text="{Binding Counts.Files, StringFormat={}{0:N0} Files}"/><TextBlock Text="  |  " Foreground="{StaticResource MutedTextBrush}"/>
+          <TextBlock Text="{Binding Counts.Duplicates, StringFormat={}{0:N0} Duplicates}" Foreground="{StaticResource WarningBrush}"/>
+          <TextBlock Text="  |  " Foreground="{StaticResource MutedTextBrush}"/>
+          <TextBlock Text="{Binding Counts.Missing, StringFormat={}{0:N0} Missing}" Foreground="{StaticResource DangerBrush}"/>
+        </StackPanel>
+        <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{StaticResource SecondaryTextBrush}" Margin="18,0" TextTrimming="CharacterEllipsis"/>
+        <TextBlock Grid.Column="2" Text="{Binding CurrentPath}" Foreground="{StaticResource MutedTextBrush}" TextTrimming="CharacterEllipsis" TextAlignment="Right"/>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>
