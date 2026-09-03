@@ -4,6 +4,9 @@ using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using RomManager.Core.Models;
 using RomManager.Core.Services;
+using SharpCompress.Archives;
+using SharpCompress.Archives.Rar;
+using SharpCompress.Archives.SevenZip;
 
 namespace RomManager.Infrastructure.Catalog;
 
@@ -89,18 +92,21 @@ public sealed class LibretroCatalogVerificationService(IFileSystem fileSystem, I
             using var archive = new ZipArchive(stream, ZipArchiveMode.Read, false);
             foreach (var entry in archive.Entries.Where(x => !string.IsNullOrEmpty(x.Name)))
             {
-                await using var entryStream = entry.Open();
-                var hashes = await HashStreamAsync(entryStream, ct);
-                var match = FindMatch(entry.Length, hashes, sha1Index, crcIndex);
-                if (match is not null) return new(match, hashes.Sha1, hashes.Crc32);
-                var skip = GetHeaderSkip(candidate.SystemKey, Path.GetExtension(entry.Name), entry.Length);
-                if (skip > 0)
-                {
-                    await using var payload = entry.Open();
-                    var payloadHashes = await HashStreamAsync(payload, ct, skip);
-                    match = FindMatch(entry.Length - skip, payloadHashes, sha1Index, crcIndex);
-                    if (match is not null) return new(match, payloadHashes.Sha1, payloadHashes.Crc32);
-                }
+                var match = await TryMatchEntryAsync(candidate.SystemKey, entry.Name, entry.Length, entry.Open, sha1Index, crcIndex, ct);
+                if (match is not null) return match;
+            }
+            return new(null, null, null);
+        }
+
+        if (candidate.Extension.Equals(".7z", StringComparison.OrdinalIgnoreCase) || candidate.Extension.Equals(".rar", StringComparison.OrdinalIgnoreCase))
+        {
+            await using var stream = await fileSystem.OpenReadAsync(candidate.FullPath, ct);
+            using IArchive archive = candidate.Extension.Equals(".7z", StringComparison.OrdinalIgnoreCase) ? SevenZipArchive.Open(stream) : RarArchive.Open(stream);
+            foreach (var entry in archive.Entries.Where(x => !x.IsDirectory && !string.IsNullOrEmpty(x.Key)))
+            {
+                var entryName = Path.GetFileName(entry.Key!);
+                var match = await TryMatchEntryAsync(candidate.SystemKey, entryName, entry.Size, entry.OpenEntryStream, sha1Index, crcIndex, ct);
+                if (match is not null) return match;
             }
             return new(null, null, null);
         }
@@ -114,6 +120,22 @@ public sealed class LibretroCatalogVerificationService(IFileSystem fileSystem, I
         await using var payloadFile = await fileSystem.OpenReadAsync(candidate.FullPath, ct);
         var payloadFileHashes = await HashStreamAsync(payloadFile, ct, headerSkip);
         return new(FindMatch(candidate.Size - headerSkip, payloadFileHashes, sha1Index, crcIndex), payloadFileHashes.Sha1, payloadFileHashes.Crc32);
+    }
+
+    private async Task<MatchResult?> TryMatchEntryAsync(string systemKey, string entryName, long entryLength, Func<Stream> openStream, IReadOnlyDictionary<string, CatalogEntry> sha1Index, IReadOnlyDictionary<(long Size, string Crc), CatalogEntry> crcIndex, CancellationToken ct)
+    {
+        await using (var entryStream = openStream())
+        {
+            var hashes = await HashStreamAsync(entryStream, ct);
+            var match = FindMatch(entryLength, hashes, sha1Index, crcIndex);
+            if (match is not null) return new(match, hashes.Sha1, hashes.Crc32);
+        }
+        var skip = GetHeaderSkip(systemKey, Path.GetExtension(entryName), entryLength);
+        if (skip <= 0) return null;
+        await using var payload = openStream();
+        var payloadHashes = await HashStreamAsync(payload, ct, skip);
+        var payloadMatch = FindMatch(entryLength - skip, payloadHashes, sha1Index, crcIndex);
+        return payloadMatch is null ? null : new(payloadMatch, payloadHashes.Sha1, payloadHashes.Crc32);
     }
 
     private static CatalogEntry? FindMatch(long size, ContentHashes hashes, IReadOnlyDictionary<string, CatalogEntry> sha1Index, IReadOnlyDictionary<(long Size, string Crc), CatalogEntry> crcIndex)

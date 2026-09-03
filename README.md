@@ -20,7 +20,7 @@ A Windows 10/11 desktop application that safely indexes ROM and game files witho
 - Data-driven platform/format catalog covering 61 console, handheld, computer, arcade, and fallback families
 - No-Intro/TOSEC-style title, region, language, revision, disc, and track parsing
 - CUE/BIN and track grouping plus multi-disc title grouping
-- ZIP content inspection without extraction; 7z/RAR paths remain read-only candidates for later deep inspection
+- ZIP, 7z, and RAR content inspection without extraction (via [SharpCompress](https://github.com/adamhathcock/sharpcompress))
 - 128 KiB sampled quick hash for the normal scan path
 - SHA-256 only on quick-hash collisions or explicit verification
 - Exact duplicate status only after matching full SHA-256 hashes

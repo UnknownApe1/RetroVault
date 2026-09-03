@@ -56,7 +56,7 @@ public sealed class LibraryScanner(IFileSystem fileSystem, IFormatIdentifier for
                 }
 
                 var existing = snapshot is null ? null : await repository.FindFileByPathAsync(candidate.FullPath, cancellationToken);
-                var identified = candidate.Extension == ".zip" ? await archives.IdentifyContentsAsync(candidate, cancellationToken) ?? formats.Identify(candidate) : formats.Identify(candidate);
+                var identified = candidate.Extension is ".zip" or ".7z" or ".rar" ? await archives.IdentifyContentsAsync(candidate, cancellationToken) ?? formats.Identify(candidate) : formats.Identify(candidate);
                 if (identified.System is null || identified.Format is null) { if (snapshot is not null) await QueueUnchangedAsync(snapshot.Id); counts.AddUnsupported(candidate.Extension); logger.LogDebug("Skipped unidentified file {Path} ({Reason})", candidate.FullPath, identified.Reason); Report(candidate.FullPath); continue; }
                 var parsed = parser.Parse(candidate.FileName);
                 var game = await repository.GetOrCreateGameAsync(parsed.Title, parsed.NormalizedTitle, identified.System.Id, cancellationToken);

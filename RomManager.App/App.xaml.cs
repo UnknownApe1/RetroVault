@@ -51,7 +51,7 @@ public partial class App : Application
             services.AddSingleton<SystemCatalog>();
             services.AddSingleton<ISystemDefinitionProvider>(x => x.GetRequiredService<SystemCatalog>());
             services.AddSingleton<IFormatIdentifier>(x => x.GetRequiredService<SystemCatalog>());
-            services.AddSingleton<IArchiveInspector, ZipArchiveInspector>();
+            services.AddSingleton<IArchiveInspector, CompressedArchiveInspector>();
             services.AddSingleton<IFileSystem, PhysicalFileSystem>();
             services.AddSingleton<IFileNameParser, NoIntroFileNameParser>();
             services.AddSingleton<IHashService, HashService>();
