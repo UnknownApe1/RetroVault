@@ -2,6 +2,7 @@
   <PropertyGroup><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\RomManager.Core\RomManager.Core.csproj" />
+    <ProjectReference Include="..\RomManager.Database\RomManager.Database.csproj" />
     <ProjectReference Include="..\RomManager.Formats\RomManager.Formats.csproj" />
     <ProjectReference Include="..\RomManager.Infrastructure\RomManager.Infrastructure.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
