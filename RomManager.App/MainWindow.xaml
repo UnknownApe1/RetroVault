@@ -58,7 +58,9 @@
       <Grid Grid.Column="1" Margin="16">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
         <TextBox Grid.Row="0" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" FontSize="15" ToolTip="Search title, filename, or path"/>
-        <ListView Grid.Row="1" Margin="3,11,3,0" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}">
+        <ListView Grid.Row="1" Margin="3,11,3,0" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}"
+                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                  ScrollViewer.IsDeferredScrollingEnabled="True">
           <ListView.View><GridView>
             <GridViewColumn Header="GAME" Width="315" DisplayMemberBinding="{Binding Title}"/>
             <GridViewColumn Header="SYSTEM" Width="195" DisplayMemberBinding="{Binding System}"/>

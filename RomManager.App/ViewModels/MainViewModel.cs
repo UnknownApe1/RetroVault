@@ -16,8 +16,9 @@ public sealed class MainViewModel : ObservableObject
     private readonly IHashService hashes;
     private readonly ILogger<MainViewModel> logger;
     private CancellationTokenSource? scanCancellation;
+    private CancellationTokenSource? refreshCancellation;
     private string searchText = "", statusText = "Ready", currentPath = "";
-    private bool isScanning;
+    private bool isScanning, isInitialized;
     private SystemDefinition? selectedSystem;
     private GameSummary? selectedGame;
     private GameFile? selectedFile;
@@ -40,7 +41,7 @@ public sealed class MainViewModel : ObservableObject
         VerifyHashCommand = new AsyncCommand(VerifyHashAsync, () => SelectedFile is not null && !IsScanning);
     }
 
-    public ObservableCollection<GameSummary> Games { get; } = [];
+    public BulkObservableCollection<GameSummary> Games { get; } = [];
     public ObservableCollection<SystemDefinition> Systems { get; } = [];
     public ObservableCollection<ScanLocation> ScanLocations { get; } = [];
     public AsyncCommand ScanCommand { get; }
@@ -57,24 +58,27 @@ public sealed class MainViewModel : ObservableObject
     public string LocationToggleLabel => SelectedLocation?.Enabled == true ? "Disable" : "Enable";
     public string RecursiveToggleLabel => SelectedLocation?.Recursive == true ? "Recursive: On" : "Recursive: Off";
     public GameFile? SelectedFile { get => selectedFile; set { if (Set(ref selectedFile, value)) { OpenFolderCommand.Refresh(); CopyPathCommand.Refresh(); VerifyHashCommand.Refresh(); } } }
-    public string SearchText { get => searchText; set { if (Set(ref searchText, value)) _ = RefreshLibraryAsync(); } }
+    public string SearchText { get => searchText; set { if (Set(ref searchText, value) && isInitialized) _ = RefreshLibraryAsync(250); } }
     public string StatusText { get => statusText; private set => Set(ref statusText, value); }
     public string CurrentPath { get => currentPath; private set => Set(ref currentPath, value); }
     public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); } } }
     public LibraryCounts Counts { get => counts; private set => Set(ref counts, value); }
-    public SystemDefinition? SelectedSystem { get => selectedSystem; set { if (Set(ref selectedSystem, value)) _ = RefreshLibraryAsync(); } }
+    public SystemDefinition? SelectedSystem { get => selectedSystem; set { if (Set(ref selectedSystem, value) && isInitialized) _ = RefreshLibraryAsync(); } }
     public GameSummary? SelectedGame { get => selectedGame; set { if (Set(ref selectedGame, value)) _ = LoadDetailsAsync(value?.Id); } }
     public Game? GameDetails { get => gameDetails; private set { Set(ref gameDetails, value); Raise(nameof(DetailFiles)); } }
     public IReadOnlyList<GameFile> DetailFiles => GameDetails?.Files ?? [];
 
     public async Task InitializeAsync()
     {
-        var interrupted = await repository.HasInterruptedScanAsync(CancellationToken.None);
+        StatusText = "Loading library...";
+        await Task.Yield();
+        var interrupted = await Task.Run(() => repository.HasInterruptedScanAsync(CancellationToken.None));
         await RefreshLocationsAsync(); await RefreshSystemsAsync(); await RefreshLibraryAsync();
-        if (ScanLocations.Count > 0)
+        isInitialized = true;
+        if (ScanLocations.Count > 0 && interrupted)
         {
-            if (interrupted) StatusText = "Interrupted scan detected. Resuming safely...";
-            await ScanAsync(interrupted);
+            StatusText = "Interrupted scan detected. Resuming safely...";
+            await ScanAsync(true);
         }
     }
 
@@ -107,10 +111,45 @@ public sealed class MainViewModel : ObservableObject
 
     public void CancelActiveScan() => scanCancellation?.Cancel();
 
-    private async Task RefreshSystemsAsync() { Systems.Clear(); Systems.Add(new SystemDefinition { Id = 0, Key = "ALL", Name = "All systems", Manufacturer = "" }); foreach (var s in await repository.GetSystemsAsync(CancellationToken.None)) Systems.Add(s); SelectedSystem ??= Systems[0]; }
-    private async Task RefreshLocationsAsync() { var selectedId = SelectedLocation?.Id; ScanLocations.Clear(); foreach (var item in await repository.GetScanLocationsAsync(false, CancellationToken.None)) ScanLocations.Add(item); SelectedLocation = selectedId.HasValue ? ScanLocations.FirstOrDefault(x => x.Id == selectedId) : null; }
-    private async Task RefreshLibraryAsync() { var games = await repository.SearchGamesAsync(SearchText, SelectedSystem is { Id: > 0 } ? SelectedSystem.Id : null, CancellationToken.None); Games.Clear(); foreach (var game in games) Games.Add(game); Counts = await repository.GetCountsAsync(CancellationToken.None); }
-    private async Task LoadDetailsAsync(long? id) { GameDetails = id.HasValue ? await repository.GetGameDetailsAsync(id.Value, CancellationToken.None) : null; SelectedFile = GameDetails?.Files.FirstOrDefault(); }
+    private async Task RefreshSystemsAsync() { Systems.Clear(); Systems.Add(new SystemDefinition { Id = 0, Key = "ALL", Name = "All systems", Manufacturer = "" }); foreach (var s in await Task.Run(() => repository.GetSystemsAsync(CancellationToken.None))) Systems.Add(s); SelectedSystem ??= Systems[0]; }
+    private async Task RefreshLocationsAsync() { var selectedId = SelectedLocation?.Id; ScanLocations.Clear(); foreach (var item in await Task.Run(() => repository.GetScanLocationsAsync(false, CancellationToken.None))) ScanLocations.Add(item); SelectedLocation = selectedId.HasValue ? ScanLocations.FirstOrDefault(x => x.Id == selectedId) : ScanLocations.FirstOrDefault(); }
+    private Task RefreshLibraryAsync() => RefreshLibraryAsync(0);
+
+    private async Task RefreshLibraryAsync(int delayMilliseconds)
+    {
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref refreshCancellation, cancellation);
+        previous?.Cancel();
+        previous?.Dispose();
+        var token = cancellation.Token;
+        try
+        {
+            if (delayMilliseconds > 0) await Task.Delay(delayMilliseconds, token);
+            var search = SearchText;
+            int? systemId = SelectedSystem is { Id: > 0 } ? SelectedSystem.Id : null;
+            var result = await Task.Run(async () =>
+            {
+                var games = await repository.SearchGamesAsync(search, systemId, token);
+                var counts = await repository.GetCountsAsync(token);
+                return (games, counts);
+            }, token);
+            token.ThrowIfCancellationRequested();
+            Games.ReplaceAll(result.games);
+            Counts = result.counts;
+            if (!IsScanning) StatusText = $"Ready — showing {Games.Count:N0} games";
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not refresh the visible library");
+            if (!IsScanning) StatusText = $"Library refresh failed: {ex.Message}";
+        }
+        finally
+        {
+            if (ReferenceEquals(Interlocked.CompareExchange(ref refreshCancellation, null, cancellation), cancellation)) cancellation.Dispose();
+        }
+    }
+    private async Task LoadDetailsAsync(long? id) { GameDetails = id.HasValue ? await Task.Run(() => repository.GetGameDetailsAsync(id.Value, CancellationToken.None)) : null; SelectedFile = GameDetails?.Files.FirstOrDefault(); }
     private async Task VerifyHashAsync()
     {
         if (SelectedFile is null) return;

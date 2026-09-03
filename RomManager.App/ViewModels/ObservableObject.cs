@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
@@ -9,6 +11,20 @@ public abstract class ObservableObject : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     protected bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null) { if (EqualityComparer<T>.Default.Equals(field, value)) return false; field = value; PropertyChanged?.Invoke(this, new(name)); return true; }
     protected void Raise([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
+}
+
+public sealed class BulkObservableCollection<T> : ObservableCollection<T>
+{
+    public void ReplaceAll(IEnumerable<T> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        CheckReentrancy();
+        Items.Clear();
+        foreach (var item in items) Items.Add(item);
+        OnPropertyChanged(new PropertyChangedEventArgs(nameof(Count)));
+        OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
+        OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+    }
 }
 
 public sealed class AsyncCommand(Func<Task> action, Func<bool>? canExecute = null) : ICommand
