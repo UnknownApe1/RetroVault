@@ -13,9 +13,15 @@ internal static class SchemaMigrator
         {
             await ExecuteAsync(db.Database.GetDbConnection(), "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=10000;", ct);
             await ExecuteAsync(db.Database.GetDbConnection(), "PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS SchemaVersions (Version INTEGER NOT NULL PRIMARY KEY, AppliedUtc TEXT NOT NULL);", ct);
-            if (await GetVersionAsync(db.Database.GetDbConnection(), ct) < 1)
+            var version = await GetVersionAsync(db.Database.GetDbConnection(), ct);
+            if (version < 1)
             {
                 await ExecuteAsync(db.Database.GetDbConnection(), $"BEGIN IMMEDIATE;{SqlV1}INSERT INTO SchemaVersions(Version, AppliedUtc) VALUES (1, CURRENT_TIMESTAMP);COMMIT;", ct);
+                version = 1;
+            }
+            if (version < 2)
+            {
+                await ExecuteAsync(db.Database.GetDbConnection(), $"BEGIN IMMEDIATE;{SqlV2}INSERT INTO SchemaVersions(Version, AppliedUtc) VALUES (2, CURRENT_TIMESTAMP);COMMIT;", ct);
             }
         }
         finally { await db.Database.CloseConnectionAsync(); }
@@ -44,5 +50,16 @@ CREATE TABLE GameFiles (Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, GameId IN
 CREATE UNIQUE INDEX IX_GameFiles_FullPath ON GameFiles(FullPath);
 CREATE INDEX IX_GameFiles_QuickHash_Size ON GameFiles(QuickHash, Size);
 CREATE TABLE Hashes (Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, GameFileId INTEGER NOT NULL, Algorithm TEXT NOT NULL, Hash TEXT NOT NULL, CalculatedDate TEXT NOT NULL, FOREIGN KEY(GameFileId) REFERENCES GameFiles(Id) ON DELETE CASCADE);
+""";
+
+    private const string SqlV2 = """
+CREATE INDEX IF NOT EXISTS IX_Games_SortTitle ON Games(SortTitle);
+CREATE INDEX IF NOT EXISTS IX_Games_SystemDefinitionId_SortTitle ON Games(SystemDefinitionId, SortTitle);
+CREATE INDEX IF NOT EXISTS IX_GameFiles_GameId_Status ON GameFiles(GameId, Status);
+CREATE INDEX IF NOT EXISTS IX_GameFiles_Status ON GameFiles(Status);
+CREATE INDEX IF NOT EXISTS IX_GameFiles_ScanLocationId_LastSeen ON GameFiles(ScanLocationId, LastSeen);
+CREATE INDEX IF NOT EXISTS IX_FileGroups_GameId_DiscNumber_DisplayName ON FileGroups(GameId, DiscNumber, DisplayName);
+CREATE INDEX IF NOT EXISTS IX_Hashes_GameFileId_Algorithm ON Hashes(GameFileId, Algorithm);
+CREATE INDEX IF NOT EXISTS IX_Hashes_Algorithm_Hash ON Hashes(Algorithm, Hash);
 """;
 }

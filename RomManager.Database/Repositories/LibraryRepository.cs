@@ -13,10 +13,10 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
         await using var db = await factory.CreateDbContextAsync(ct);
         await SchemaMigrator.ApplyAsync(db, ct);
         var source = await definitions.LoadAsync(ct);
+        var existingSystems = await db.Systems.Include(x => x.Formats).ToDictionaryAsync(x => x.Key, ct);
         foreach (var definition in source)
         {
-            var system = await db.Systems.Include(x => x.Formats).SingleOrDefaultAsync(x => x.Key == definition.Key, ct);
-            if (system is null)
+            if (!existingSystems.TryGetValue(definition.Key, out var system))
             {
                 db.Systems.Add(new SystemDefinition { Key = definition.Key, Name = definition.Name, Manufacturer = definition.Manufacturer, Category = definition.Category, Enabled = definition.Enabled,
                     Formats = definition.Formats.Select(f => new SystemFormat { Extension = f.Extension, FormatName = f.FormatName, FormatType = f.FormatType, Priority = f.Priority, RequiresHeaderCheck = f.RequiresHeaderCheck, IsArchive = f.IsArchive, IsMultiFile = f.IsMultiFile }).ToList() });
@@ -158,7 +158,17 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
         var q = db.Games.AsNoTracking().AsQueryable();
         if (systemId.HasValue) q = q.Where(x => x.SystemDefinitionId == systemId);
         if (!string.IsNullOrWhiteSpace(search)) { var term = search.Trim(); q = q.Where(x => EF.Functions.Like(x.CanonicalTitle, $"%{term}%") || x.Files.Any(f => EF.Functions.Like(f.FileName, $"%{term}%") || EF.Functions.Like(f.FullPath, $"%{term}%"))); }
-        return await q.OrderBy(x => x.SortTitle).Take(5000).Select(x => new GameSummary(x.Id, x.CanonicalTitle, x.SystemDefinition!.Name, x.Files.Count, x.Files.Count(f => f.Status == FileStatus.Duplicate), x.Files.Any(f => f.Status == FileStatus.Missing) ? FileStatus.Missing : x.Files.Any(f => f.Status == FileStatus.Duplicate) ? FileStatus.Duplicate : FileStatus.Normal)).ToListAsync(ct);
+        var rows = await q.OrderBy(x => x.SortTitle).Take(5000).Select(x => new
+        {
+            x.Id,
+            Title = x.CanonicalTitle,
+            System = x.SystemDefinition!.Name,
+            FileCount = x.Files.Count,
+            DuplicateCount = x.Files.Count(f => f.Status == FileStatus.Duplicate),
+            MissingCount = x.Files.Count(f => f.Status == FileStatus.Missing)
+        }).ToListAsync(ct);
+        return rows.Select(x => new GameSummary(x.Id, x.Title, x.System, x.FileCount, x.DuplicateCount,
+            x.MissingCount > 0 ? FileStatus.Missing : x.DuplicateCount > 0 ? FileStatus.Duplicate : FileStatus.Normal)).ToList();
     }
 
     public async Task<Game?> GetGameDetailsAsync(long id, CancellationToken ct)
