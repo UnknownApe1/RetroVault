@@ -72,6 +72,12 @@ public sealed record CatalogVerificationResult(int Systems, long Files, long Ver
 
 public sealed record FuzzyMatchCandidate(long GameAId, string GameATitle, long GameBId, string GameBTitle, string SystemName, int FileCountA, int FileCountB, double Similarity);
 
+public sealed record PreferredExportFile(string SystemName, string FullPath, string FileName);
+
+public sealed record LibraryExportProgress(long FilesCompleted, long FilesTotal, string CurrentItem);
+
+public sealed record LibraryExportOperationResult(long Copied, long Skipped, long Errors);
+
 public sealed class IncompleteFileEnumerationException(string rootPath, int errorCount)
     : IOException($"The scan could not read {errorCount:N0} path(s) under {rootPath}. Indexed changes were saved, but missing-file detection was skipped for safety.")
 {

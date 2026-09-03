@@ -18,6 +18,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly IHashService hashes;
     private readonly ICatalogVerificationService catalogVerification;
     private readonly IThumbnailService thumbnails;
+    private readonly ILibraryExportService libraryExport;
     private readonly ILogger<MainViewModel> logger;
     private CancellationTokenSource? scanCancellation;
     private CancellationTokenSource? refreshCancellation;
@@ -33,9 +34,9 @@ public sealed class MainViewModel : ObservableObject
     private LibraryCounts counts = new(0, 0, 0, 0);
     private string? thumbnailPath;
 
-    public MainViewModel(ILibraryRepository repository, ILibraryScanner scanner, IHashService hashes, ICatalogVerificationService catalogVerification, IThumbnailService thumbnails, ILogger<MainViewModel> logger)
+    public MainViewModel(ILibraryRepository repository, ILibraryScanner scanner, IHashService hashes, ICatalogVerificationService catalogVerification, IThumbnailService thumbnails, ILibraryExportService libraryExport, ILogger<MainViewModel> logger)
     {
-        this.repository = repository; this.scanner = scanner; this.hashes = hashes; this.catalogVerification = catalogVerification; this.thumbnails = thumbnails; this.logger = logger;
+        this.repository = repository; this.scanner = scanner; this.hashes = hashes; this.catalogVerification = catalogVerification; this.thumbnails = thumbnails; this.libraryExport = libraryExport; this.logger = logger;
         ScanCommand = new AsyncCommand(ScanAsync, () => !IsScanning);
         CancelCommand = new RelayCommand(() => scanCancellation?.Cancel(), () => IsScanning);
         AddFolderCommand = new AsyncCommand(AddFolderAsync, () => !IsScanning);
@@ -53,6 +54,7 @@ public sealed class MainViewModel : ObservableObject
         ExcludeCopyCommand = new AsyncCommand(ToggleExcludedCopyAsync, () => SelectedFile is not null && !IsScanning);
         ExcludeNonPreferredCommand = new AsyncCommand(ExcludeNonPreferredAsync, () => SelectedGames.Count > 0 && !IsScanning);
         ClearOverridesCommand = new AsyncCommand(ClearOverridesAsync, () => SelectedGames.Count > 0 && !IsScanning);
+        ExportPreferredLibraryCommand = new AsyncCommand(ExportPreferredLibraryAsync, () => !IsScanning);
         SelectedGames.CollectionChanged += (_, _) => { ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); Raise(nameof(SelectedGamesCountText)); };
     }
 
@@ -88,6 +90,7 @@ public sealed class MainViewModel : ObservableObject
     public AsyncCommand ExcludeCopyCommand { get; }
     public AsyncCommand ExcludeNonPreferredCommand { get; }
     public AsyncCommand ClearOverridesCommand { get; }
+    public AsyncCommand ExportPreferredLibraryCommand { get; }
     public string VersionText { get; } = GetVersionText();
     public string WindowTitle => $"ROM Manager {VersionText}";
     public ScanLocation? SelectedLocation { get => selectedLocation; set { if (Set(ref selectedLocation, value)) { RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); Raise(nameof(LocationToggleLabel)); Raise(nameof(RecursiveToggleLabel)); } } }
@@ -101,7 +104,7 @@ public sealed class MainViewModel : ObservableObject
     public string SearchText { get => searchText; set { if (Set(ref searchText, value) && isInitialized) _ = RefreshLibraryAsync(250); } }
     public string StatusText { get => statusText; private set => Set(ref statusText, value); }
     public string CurrentPath { get => currentPath; private set => Set(ref currentPath, value); }
-    public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); ExportCsvCommand.Refresh(); VerifyCatalogCommand.Refresh(); ReviewDuplicateTitlesCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); } } }
+    public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); ExportCsvCommand.Refresh(); VerifyCatalogCommand.Refresh(); ReviewDuplicateTitlesCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); ExportPreferredLibraryCommand.Refresh(); } } }
     public LibraryCounts Counts { get => counts; private set => Set(ref counts, value); }
     public SystemDefinition? SelectedSystem { get => selectedSystem; set { if (Set(ref selectedSystem, value) && isInitialized) _ = RefreshLibraryAsync(); } }
     public LibraryFilterOption? SelectedFilter { get => selectedFilter; set { if (Set(ref selectedFilter, value) && isInitialized) _ = RefreshLibraryAsync(); } }
@@ -313,6 +316,28 @@ public sealed class MainViewModel : ObservableObject
         if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
         await RefreshLibraryAsync();
         StatusText = "Copy inclusion updated";
+    }
+    private async Task ExportPreferredLibraryAsync()
+    {
+        var picker = new OpenFolderDialog { Title = "Choose a destination folder for your organized library" };
+        if (picker.ShowDialog() != true) return;
+
+        scanCancellation = new();
+        IsScanning = true;
+        StatusText = "Preparing library export...";
+        var progress = new Progress<LibraryExportProgress>(p =>
+        {
+            CurrentPath = p.CurrentItem;
+            StatusText = $"Exporting {p.FilesCompleted:N0}/{p.FilesTotal:N0}";
+        });
+        try
+        {
+            var result = await Task.Run(() => libraryExport.ExportPreferredCopiesAsync(picker.FolderName, progress, scanCancellation.Token), scanCancellation.Token);
+            StatusText = $"Export complete: {result.Copied:N0} copied, {result.Skipped:N0} already up to date, {result.Errors:N0} errors";
+        }
+        catch (OperationCanceledException) { StatusText = "Export canceled; files already copied were kept"; }
+        catch (Exception ex) { logger.LogError(ex, "Library export stopped unexpectedly"); StatusText = $"Export paused: {ex.Message}"; }
+        finally { IsScanning = false; scanCancellation.Dispose(); scanCancellation = null; CurrentPath = ""; }
     }
     private async Task ExportLibraryCsvAsync()
     {

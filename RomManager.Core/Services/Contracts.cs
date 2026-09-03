@@ -23,6 +23,10 @@ public interface IThumbnailService
 {
     Task<string?> GetThumbnailPathAsync(string systemKey, string gameTitle, CancellationToken cancellationToken);
 }
+public interface ILibraryExportService
+{
+    Task<LibraryExportOperationResult> ExportPreferredCopiesAsync(string destinationRoot, IProgress<LibraryExportProgress>? progress, CancellationToken cancellationToken);
+}
 public interface IFormatIdentifier { IdentificationResult Identify(FileCandidate file); bool IsCandidate(string extension); }
 public interface IArchiveInspector { Task<IdentificationResult?> IdentifyContentsAsync(FileCandidate archive, CancellationToken cancellationToken); }
 
@@ -59,6 +63,7 @@ public interface ILibraryRepository
     Task ClearCopyOverridesAsync(IReadOnlyList<long> gameIds, CancellationToken cancellationToken);
     Task<IReadOnlyList<FuzzyMatchCandidate>> GetFuzzyMatchCandidatesAsync(CancellationToken cancellationToken);
     Task MergeGamesAsync(long keepGameId, long mergeGameId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<PreferredExportFile>> GetPreferredExportFilesAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<SystemDefinition>> GetSystemsAsync(CancellationToken cancellationToken);
 }
 

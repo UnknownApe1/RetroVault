@@ -173,6 +173,19 @@ public sealed class LibraryRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetPreferredExportFilesAsync_ReturnsOnlyThePreferredCopy()
+    {
+        await SeedTwoCopiesAsync();
+        await repository.RecalculatePreferredCopiesAsync(null, CancellationToken.None);
+
+        var files = await repository.GetPreferredExportFilesAsync(CancellationToken.None);
+
+        var file = Assert.Single(files);
+        Assert.Equal("NES", file.SystemName);
+        Assert.Equal("Test Game (USA).nes", file.FileName);
+    }
+
+    [Fact]
     public async Task GetLibraryExportRowsAsync_IncludesCatalogAndPreferenceFields()
     {
         var (_, usaFileId, _) = await SeedTwoCopiesAsync();

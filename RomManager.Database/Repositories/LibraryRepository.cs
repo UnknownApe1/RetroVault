@@ -432,6 +432,16 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
         gamesByKey = null;
     }
 
+    public async Task<IReadOnlyList<PreferredExportFile>> GetPreferredExportFilesAsync(CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        return await db.GameFiles.AsNoTracking()
+            .Where(x => x.IsPreferred && x.Status != FileStatus.Missing && x.Game != null)
+            .OrderBy(x => x.Game!.SystemDefinition!.Name).ThenBy(x => x.FileName)
+            .Select(x => new PreferredExportFile(x.Game!.SystemDefinition!.Name, x.FullPath, x.FileName))
+            .ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<SystemDefinition>> GetSystemsAsync(CancellationToken ct)
     { await using var db = await factory.CreateDbContextAsync(ct); return await db.Systems.AsNoTracking().OrderBy(x => x.Name).ToListAsync(ct); }
 

@@ -14,6 +14,7 @@ using RomManager.Database.Repositories;
 using RomManager.Database.SQLite;
 using RomManager.Formats.FormatDefinitions;
 using RomManager.Formats.Parsers;
+using RomManager.Infrastructure.Export;
 using RomManager.Infrastructure.FileSystem;
 using RomManager.Infrastructure.Logging;
 using RomManager.Infrastructure.Catalog;
@@ -61,6 +62,7 @@ public partial class App : Application
             services.AddSingleton<ILibraryScanner, LibraryScanner>();
             services.AddSingleton<ICatalogVerificationService, LibretroCatalogVerificationService>();
             services.AddSingleton<IThumbnailService, LibretroThumbnailService>();
+            services.AddSingleton<ILibraryExportService, LibraryExportService>();
             services.AddSingleton<MainViewModel>();
             services.AddSingleton<MainWindow>();
         }).ConfigureLogging((_, logging) =>

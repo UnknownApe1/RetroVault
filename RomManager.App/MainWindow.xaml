@@ -12,6 +12,7 @@
           <Button Content="Review Duplicate Titles" Command="{Binding ReviewDuplicateTitlesCommand}" ToolTip="Find likely-duplicate game titles across the whole library for manual review and merge"/>
           <Button Content="Verify Catalog" Command="{Binding VerifyCatalogCommand}" ToolTip="Verify the selected system against trusted checksum catalogs"/>
           <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" ToolTip="Export every indexed copy with its source, status, and hashes"/>
+          <Button Content="Export Good Roms" Command="{Binding ExportPreferredLibraryCommand}" ToolTip="Copy every game's preferred, non-excluded version into a folder organized by system. Originals are never moved, renamed, or modified."/>
           <Button Content="Add Folder" Command="{Binding AddFolderCommand}"/>
           <Button Content="Scan Now" Command="{Binding ScanCommand}" Style="{StaticResource AccentButton}"/>
           <Button Content="Cancel" Command="{Binding CancelCommand}"/>
