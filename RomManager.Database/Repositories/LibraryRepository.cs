@@ -232,13 +232,16 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
             x.Id,
             Title = x.CanonicalTitle,
             System = x.SystemDefinition!.Name,
+            SystemKey = x.SystemDefinition!.Key,
             FileCount = x.Files.Count,
             DuplicateCount = x.Files.Count(f => f.Status == FileStatus.Duplicate),
             VerifiedCount = x.Files.Count(f => f.CatalogStatus == CatalogVerificationStatus.Verified),
-            MissingCount = x.Files.Count(f => f.Status == FileStatus.Missing)
+            MissingCount = x.Files.Count(f => f.Status == FileStatus.Missing),
+            PreferredCatalogName = x.Files.Where(f => f.IsPreferred).Select(f => f.CatalogName).FirstOrDefault(),
+            PreferredRegion = x.Files.OrderByDescending(f => f.IsPreferred).Select(f => f.Region).FirstOrDefault()
         }).ToListAsync(ct);
-        return rows.Select(x => new GameSummary(x.Id, x.Title, x.System, x.FileCount, x.DuplicateCount, x.VerifiedCount,
-            x.MissingCount > 0 ? FileStatus.Missing : x.DuplicateCount > 0 ? FileStatus.Duplicate : FileStatus.Normal)).ToList();
+        return rows.Select(x => new GameSummary(x.Id, x.Title, x.System, x.SystemKey, x.FileCount, x.DuplicateCount, x.VerifiedCount,
+            x.MissingCount > 0 ? FileStatus.Missing : x.DuplicateCount > 0 ? FileStatus.Duplicate : FileStatus.Normal, x.PreferredCatalogName, x.PreferredRegion)).ToList();
     }
 
     public async Task<Game?> GetGameDetailsAsync(long id, CancellationToken ct)

@@ -26,7 +26,7 @@ public sealed class MainViewModel : ObservableObject
     private bool isScanning, isInitialized;
     private SystemDefinition? selectedSystem;
     private LibraryFilterOption? selectedFilter;
-    private GameSummary? selectedGame;
+    private GameListItem? selectedGame;
     private GameFile? selectedFile;
     private ScanLocation? selectedLocation;
     private Game? gameDetails;
@@ -56,7 +56,7 @@ public sealed class MainViewModel : ObservableObject
         SelectedGames.CollectionChanged += (_, _) => { ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); Raise(nameof(SelectedGamesCountText)); };
     }
 
-    public BulkObservableCollection<GameSummary> Games { get; } = [];
+    public BulkObservableCollection<GameListItem> Games { get; } = [];
     public IReadOnlyList<LibraryFilterOption> LibraryFilters { get; } =
     [
         new(LibraryViewFilter.All, "All games"),
@@ -68,7 +68,7 @@ public sealed class MainViewModel : ObservableObject
         new(LibraryViewFilter.NeedsReview, "Needs review"),
         new(LibraryViewFilter.PreferredCopies, "Preferred copies")
     ];
-    public ObservableCollection<GameSummary> SelectedGames { get; } = [];
+    public ObservableCollection<GameListItem> SelectedGames { get; } = [];
     public ObservableCollection<SystemDefinition> Systems { get; } = [];
     public ObservableCollection<ScanLocation> ScanLocations { get; } = [];
     public AsyncCommand ScanCommand { get; }
@@ -105,7 +105,7 @@ public sealed class MainViewModel : ObservableObject
     public LibraryCounts Counts { get => counts; private set => Set(ref counts, value); }
     public SystemDefinition? SelectedSystem { get => selectedSystem; set { if (Set(ref selectedSystem, value) && isInitialized) _ = RefreshLibraryAsync(); } }
     public LibraryFilterOption? SelectedFilter { get => selectedFilter; set { if (Set(ref selectedFilter, value) && isInitialized) _ = RefreshLibraryAsync(); } }
-    public GameSummary? SelectedGame { get => selectedGame; set { if (Set(ref selectedGame, value)) _ = LoadDetailsAsync(value?.Id); } }
+    public GameListItem? SelectedGame { get => selectedGame; set { if (Set(ref selectedGame, value)) _ = LoadDetailsAsync(value?.Id); } }
     public Game? GameDetails { get => gameDetails; private set { Set(ref gameDetails, value); Raise(nameof(DetailFiles)); } }
     public IReadOnlyList<GameFile> DetailFiles => GameDetails?.Files ?? [];
 
@@ -183,7 +183,7 @@ public sealed class MainViewModel : ObservableObject
                 return (games, counts);
             }, token);
             token.ThrowIfCancellationRequested();
-            Games.ReplaceAll(result.games);
+            Games.ReplaceAll(result.games.Select(x => new GameListItem(x, thumbnails)));
             Counts = result.counts;
             if (!IsScanning) StatusText = $"Ready — showing {Games.Count:N0} games";
         }
@@ -259,10 +259,7 @@ public sealed class MainViewModel : ObservableObject
         var token = cancellation.Token;
         var file = SelectedFile;
         var systemKey = GameDetails?.SystemDefinition?.Key;
-        // A verified catalog name is the reliable match. Absent that (NoMatch/Unknown files), fall back to the
-        // parsed title with its region tag reattached, since that is what libretro-thumbnails actually names
-        // files after ("Banjo-Tooie (USA)") — the bare canonical title alone almost never matches.
-        var title = file?.CatalogName ?? BuildFallbackThumbnailTitle(GameDetails?.CanonicalTitle, file?.Region);
+        var title = ThumbnailTitleResolver.Resolve(file?.CatalogName, GameDetails?.CanonicalTitle, file?.Region);
         if (file is null || systemKey is null || title is null) { ThumbnailPath = null; return; }
         try
         {
@@ -271,13 +268,6 @@ public sealed class MainViewModel : ObservableObject
         }
         catch (OperationCanceledException) { }
         finally { if (ReferenceEquals(Interlocked.CompareExchange(ref thumbnailCancellation, null, cancellation), cancellation)) cancellation.Dispose(); }
-    }
-
-    private static string? BuildFallbackThumbnailTitle(string? canonicalTitle, string? region)
-    {
-        if (string.IsNullOrWhiteSpace(canonicalTitle)) return null;
-        var primaryRegion = string.IsNullOrWhiteSpace(region) ? null : region.Split(',', StringSplitOptions.TrimEntries).FirstOrDefault();
-        return string.IsNullOrWhiteSpace(primaryRegion) ? canonicalTitle : $"{canonicalTitle} ({primaryRegion})";
     }
     private async Task ExcludeNonPreferredAsync()
     {

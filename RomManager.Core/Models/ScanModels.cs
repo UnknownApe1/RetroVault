@@ -31,7 +31,7 @@ public sealed record LibraryFilterOption(LibraryViewFilter Value, string Name);
 
 public sealed record ExistingFileSnapshot(long Id, string FullPath, long Size, DateTimeOffset ModifiedDate, FileStatus Status);
 
-public sealed record GameSummary(long Id, string Title, string System, int FileCount, int DuplicateCount, int VerifiedCount, FileStatus WorstStatus);
+public sealed record GameSummary(long Id, string Title, string System, string SystemKey, int FileCount, int DuplicateCount, int VerifiedCount, FileStatus WorstStatus, string? PreferredCatalogName, string? PreferredRegion);
 
 public sealed record LibraryCounts(long Games, long Files, long Duplicates, long Missing, long Verified = 0);
 

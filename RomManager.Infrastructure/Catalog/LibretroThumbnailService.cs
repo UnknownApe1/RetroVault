@@ -9,6 +9,9 @@ public sealed class LibretroThumbnailService(ILogger<LibretroThumbnailService> l
     private static readonly char[] InvalidNameCharacters = ['&', '*', '/', ':', '`', '<', '>', '?', '\\', '|', '"'];
     private static readonly HttpClient Http = CreateHttpClient();
     private static readonly IReadOnlyDictionary<string, string> SystemDisplayNames = CreateSystemDisplayNames();
+    // Bounds simultaneous downloads when many list rows become visible at once (e.g. fast scrolling);
+    // the local file/negative-cache checks above already short-circuit repeat lookups without hitting this.
+    private static readonly SemaphoreSlim ConcurrencyGate = new(6);
 
     public async Task<string?> GetThumbnailPathAsync(string systemKey, string gameTitle, CancellationToken ct)
     {
@@ -23,6 +26,7 @@ public sealed class LibretroThumbnailService(ILogger<LibretroThumbnailService> l
 
         var repo = displayName.Replace(" - ", "_-_", StringComparison.Ordinal).Replace(' ', '_');
         var url = $"{RawRoot}/{repo}/master/Named_Boxarts/{Uri.EscapeDataString(sanitized)}.png";
+        await ConcurrencyGate.WaitAsync(ct);
         try
         {
             using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
@@ -39,6 +43,7 @@ public sealed class LibretroThumbnailService(ILogger<LibretroThumbnailService> l
             logger.LogDebug(ex, "Could not fetch thumbnail for {Title}", gameTitle);
             return null;
         }
+        finally { ConcurrencyGate.Release(); }
     }
 
     private static string SanitizeFileName(string title)

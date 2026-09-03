@@ -36,7 +36,7 @@ A Windows 10/11 desktop application that safely indexes ROM and game files witho
 - Conservative preferred-copy recommendations that prioritize verified, available USA/World releases and avoid beta/prototype/demo/bad-dump/hack labels
 - Likely-duplicate title review: a bucketed Levenshtein scan (with an explicit guard against numbered-sequel false positives) surfaces near-identical titles across the whole library for a human to merge or dismiss — nothing is merged automatically
 - Multi-select bulk actions: exclude every non-preferred copy, or clear manual preference/exclusion overrides, across all selected games at once
-- Best-effort box art from [libretro-thumbnails](https://github.com/libretro-thumbnails), matched against the verified catalog name (falling back to the parsed title), cached locally with a negative-result cache so a miss is not retried for 30 days
+- Best-effort box art from [libretro-thumbnails](https://github.com/libretro-thumbnails) in the detail panel and as a small thumbnail per row in the game list, matched against the verified catalog name (falling back to the parsed title plus region), cached locally with a negative-result cache so a miss is not retried for 30 days. Matching depends on the title being close to No-Intro naming — collections whose filenames carry their own ranking/numbering prefix will mostly miss
 - Rotating session logs under `%LOCALAPPDATA%\CozziForged\RomManager\Logs` (2 MiB per file, 20 files maximum, 14-day retention)
 - Optional `--verbose-scan` diagnostics for per-file unchanged and unsupported skip reasons
 - xUnit coverage for parsing, grouping, hashing, enumeration, and ambiguous format hints
