@@ -63,7 +63,7 @@ public sealed class LibretroCatalogVerificationService(IFileSystem fileSystem, I
                 {
                     var match = await MatchFileAsync(candidate, sha1Index, crcIndex, ct);
                     update = new(candidate.Id, match.Entry is null ? CatalogVerificationStatus.NoMatch : CatalogVerificationStatus.Verified,
-                        definition.DisplaySource, match.Entry?.RomName, match.Sha1, match.Crc32, null);
+                        definition.DisplaySource, match.Entry?.Name, match.Sha1, match.Crc32, null);
                     if (match.Entry is null) noMatch++; else verified++;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
