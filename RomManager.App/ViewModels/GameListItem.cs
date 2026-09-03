@@ -18,6 +18,8 @@ public sealed class GameListItem(GameSummary summary, IThumbnailService thumbnai
     public int FileCount => Summary.FileCount;
     public int VerifiedCount => Summary.VerifiedCount;
     public FileStatus WorstStatus => Summary.WorstStatus;
+    public bool IsWanted => Summary.IsWanted;
+    public string WantedText => Summary.IsWanted ? "★" : "";
     public string? ThumbnailPath { get => thumbnailPath; private set => Set(ref thumbnailPath, value); }
 
     public async void EnsureThumbnailLoadedAsync()

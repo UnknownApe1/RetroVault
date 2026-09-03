@@ -31,7 +31,7 @@ public sealed class LibraryExportServiceTests : IDisposable
         var repository = new StubRepository([new PreferredExportFile("Nintendo Entertainment System", path, "Game.nes")]);
         var service = new LibraryExportService(repository, NullLogger<LibraryExportService>.Instance);
 
-        var result = await service.ExportPreferredCopiesAsync(destinationRoot, null, CancellationToken.None);
+        var result = await service.ExportPreferredCopiesAsync(destinationRoot, false, null, CancellationToken.None);
 
         Assert.Equal(1, result.Copied);
         Assert.Equal(0, result.Skipped);
@@ -51,7 +51,7 @@ public sealed class LibraryExportServiceTests : IDisposable
         var repository = new StubRepository([new PreferredExportFile("Nintendo Entertainment System", path, "Game.nes")]);
         var service = new LibraryExportService(repository, NullLogger<LibraryExportService>.Instance);
 
-        var result = await service.ExportPreferredCopiesAsync(destinationRoot, null, CancellationToken.None);
+        var result = await service.ExportPreferredCopiesAsync(destinationRoot, false, null, CancellationToken.None);
 
         Assert.Equal(0, result.Copied);
         Assert.Equal(1, result.Skipped);
@@ -65,14 +65,15 @@ public sealed class LibraryExportServiceTests : IDisposable
         var repository = new StubRepository([new PreferredExportFile("Sys:Tem*Name", path, "Game.dat")]);
         var service = new LibraryExportService(repository, NullLogger<LibraryExportService>.Instance);
 
-        await service.ExportPreferredCopiesAsync(destinationRoot, null, CancellationToken.None);
+        await service.ExportPreferredCopiesAsync(destinationRoot, false, null, CancellationToken.None);
 
         Assert.True(Directory.Exists(Path.Combine(destinationRoot, "Sys_Tem_Name")));
     }
 
     private sealed class StubRepository(IReadOnlyList<PreferredExportFile> files) : ILibraryRepository
     {
-        public Task<IReadOnlyList<PreferredExportFile>> GetPreferredExportFilesAsync(CancellationToken ct) => Task.FromResult(files);
+        public Task<IReadOnlyList<PreferredExportFile>> GetPreferredExportFilesAsync(bool onlyWanted, CancellationToken ct) => Task.FromResult(files);
+        public Task SetGamesWantedAsync(IReadOnlyList<long> gameIds, bool wanted, CancellationToken ct) => throw new NotSupportedException();
 
         public Task InitializeAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<ScanLocation>> GetScanLocationsAsync(bool enabledOnly, CancellationToken ct) => throw new NotSupportedException();

@@ -13,6 +13,7 @@
           <Button Content="Verify Catalog" Command="{Binding VerifyCatalogCommand}" ToolTip="Verify the selected system against trusted checksum catalogs"/>
           <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" ToolTip="Export every indexed copy with its source, status, and hashes"/>
           <Button Content="Export Good Roms" Command="{Binding ExportPreferredLibraryCommand}" ToolTip="Copy every game's preferred, non-excluded version into a folder organized by system. Originals are never moved, renamed, or modified."/>
+          <Button Content="Export Wanted Games" Command="{Binding ExportWantedLibraryCommand}" ToolTip="Copy only the games you've marked Wanted, using each one's preferred version, into a folder organized by system."/>
           <Button Content="Add Folder" Command="{Binding AddFolderCommand}"/>
           <Button Content="Scan Now" Command="{Binding ScanCommand}" Style="{StaticResource AccentButton}"/>
           <Button Content="Cancel" Command="{Binding CancelCommand}"/>
@@ -75,6 +76,8 @@
           <TextBlock Text="{Binding SelectedGamesCountText}" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" Margin="4,0,10,0"/>
           <Button Content="Exclude Non-Preferred Copies" Command="{Binding ExcludeNonPreferredCommand}" ToolTip="For the selected games, keep only each game's preferred copy and exclude the rest"/>
           <Button Content="Clear Overrides" Command="{Binding ClearOverridesCommand}" ToolTip="Reset manual preferred/excluded choices back to automatic for the selected games"/>
+          <Button Content="Mark Wanted" Command="{Binding MarkWantedCommand}" ToolTip="Mark the selected games as Wanted, so Export Wanted Games includes them"/>
+          <Button Content="Unmark Wanted" Command="{Binding UnmarkWantedCommand}" ToolTip="Remove the selected games from your Wanted set"/>
         </DockPanel>
         <ListView x:Name="GamesListView" Grid.Row="2" Margin="3,11,3,0" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}"
                   SelectionMode="Extended" SelectionChanged="GamesListView_SelectionChanged"
@@ -90,8 +93,9 @@
                 </DataTemplate>
               </GridViewColumn.CellTemplate>
             </GridViewColumn>
-            <GridViewColumn Header="GAME" Width="280" DisplayMemberBinding="{Binding Title}"/>
-            <GridViewColumn Header="SYSTEM" Width="175" DisplayMemberBinding="{Binding System}"/>
+            <GridViewColumn Header="GAME" Width="260" DisplayMemberBinding="{Binding Title}"/>
+            <GridViewColumn Header="SYSTEM" Width="165" DisplayMemberBinding="{Binding System}"/>
+            <GridViewColumn Header="★" Width="30" DisplayMemberBinding="{Binding WantedText}"/>
             <GridViewColumn Header="FILES" Width="65" DisplayMemberBinding="{Binding FileCount}"/>
             <GridViewColumn Header="VERIFIED" Width="80" DisplayMemberBinding="{Binding VerifiedCount}"/>
             <GridViewColumn Header="STATUS" Width="95" DisplayMemberBinding="{Binding WorstStatus}"/>

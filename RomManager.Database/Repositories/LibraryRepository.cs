@@ -225,6 +225,7 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
             LibraryViewFilter.Missing => q.Where(x => x.Files.Any(f => f.Status == FileStatus.Missing)),
             LibraryViewFilter.NeedsReview => q.Where(x => x.Files.Any(f => f.CatalogStatus == CatalogVerificationStatus.NoMatch || f.CatalogStatus == CatalogVerificationStatus.Error || f.CatalogStatus == CatalogVerificationStatus.Unsupported)),
             LibraryViewFilter.PreferredCopies => q.Where(x => x.Files.Any(f => f.IsPreferred)),
+            LibraryViewFilter.Wanted => q.Where(x => x.IsWanted),
             _ => q
         };
         var rows = await q.OrderBy(x => x.SortTitle).Take(5000).Select(x => new
@@ -238,10 +239,11 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
             VerifiedCount = x.Files.Count(f => f.CatalogStatus == CatalogVerificationStatus.Verified),
             MissingCount = x.Files.Count(f => f.Status == FileStatus.Missing),
             PreferredCatalogName = x.Files.Where(f => f.IsPreferred).Select(f => f.CatalogName).FirstOrDefault(),
-            PreferredRegion = x.Files.OrderByDescending(f => f.IsPreferred).Select(f => f.Region).FirstOrDefault()
+            PreferredRegion = x.Files.OrderByDescending(f => f.IsPreferred).Select(f => f.Region).FirstOrDefault(),
+            x.IsWanted
         }).ToListAsync(ct);
         return rows.Select(x => new GameSummary(x.Id, x.Title, x.System, x.SystemKey, x.FileCount, x.DuplicateCount, x.VerifiedCount,
-            x.MissingCount > 0 ? FileStatus.Missing : x.DuplicateCount > 0 ? FileStatus.Duplicate : FileStatus.Normal, x.PreferredCatalogName, x.PreferredRegion)).ToList();
+            x.MissingCount > 0 ? FileStatus.Missing : x.DuplicateCount > 0 ? FileStatus.Duplicate : FileStatus.Normal, x.PreferredCatalogName, x.PreferredRegion, x.IsWanted)).ToList();
     }
 
     public async Task<Game?> GetGameDetailsAsync(long id, CancellationToken ct)
@@ -393,6 +395,16 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
         }
     }
 
+    public async Task SetGamesWantedAsync(IReadOnlyList<long> gameIds, bool wanted, CancellationToken ct)
+    {
+        if (gameIds.Count == 0) return;
+        foreach (var batch in gameIds.Chunk(200))
+        {
+            await using var db = await factory.CreateDbContextAsync(ct);
+            await db.Games.Where(x => batch.Contains(x.Id)).ExecuteUpdateAsync(s => s.SetProperty(x => x.IsWanted, wanted), ct);
+        }
+    }
+
     public async Task<IReadOnlyList<FuzzyMatchCandidate>> GetFuzzyMatchCandidatesAsync(CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
@@ -432,11 +444,12 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
         gamesByKey = null;
     }
 
-    public async Task<IReadOnlyList<PreferredExportFile>> GetPreferredExportFilesAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<PreferredExportFile>> GetPreferredExportFilesAsync(bool onlyWanted, CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
-        return await db.GameFiles.AsNoTracking()
-            .Where(x => x.IsPreferred && x.Status != FileStatus.Missing && x.Game != null)
+        var query = db.GameFiles.AsNoTracking().Where(x => x.IsPreferred && x.Status != FileStatus.Missing && x.Game != null);
+        if (onlyWanted) query = query.Where(x => x.Game!.IsWanted);
+        return await query
             .OrderBy(x => x.Game!.SystemDefinition!.Name).ThenBy(x => x.FileName)
             .Select(x => new PreferredExportFile(x.Game!.SystemDefinition!.Name, x.FullPath, x.FileName))
             .ToListAsync(ct);

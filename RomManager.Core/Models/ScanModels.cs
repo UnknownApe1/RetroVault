@@ -25,13 +25,13 @@ public sealed record ScanProgress(long Discovered, long Processed, long Skipped,
 
 public sealed record ScanResult(long Discovered, long Processed, long Skipped, long Added, long Changed, long Missing, IReadOnlyList<string> Errors);
 
-public enum LibraryViewFilter { All, Verified, Unverified, ExactDuplicates, MultipleVersions, Missing, NeedsReview, PreferredCopies }
+public enum LibraryViewFilter { All, Verified, Unverified, ExactDuplicates, MultipleVersions, Missing, NeedsReview, PreferredCopies, Wanted }
 
 public sealed record LibraryFilterOption(LibraryViewFilter Value, string Name);
 
 public sealed record ExistingFileSnapshot(long Id, string FullPath, long Size, DateTimeOffset ModifiedDate, FileStatus Status);
 
-public sealed record GameSummary(long Id, string Title, string System, string SystemKey, int FileCount, int DuplicateCount, int VerifiedCount, FileStatus WorstStatus, string? PreferredCatalogName, string? PreferredRegion);
+public sealed record GameSummary(long Id, string Title, string System, string SystemKey, int FileCount, int DuplicateCount, int VerifiedCount, FileStatus WorstStatus, string? PreferredCatalogName, string? PreferredRegion, bool IsWanted);
 
 public sealed record LibraryCounts(long Games, long Files, long Duplicates, long Missing, long Verified = 0);
 

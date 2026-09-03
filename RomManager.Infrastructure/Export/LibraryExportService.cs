@@ -11,9 +11,9 @@ public sealed class LibraryExportService(ILibraryRepository repository, ILogger<
 {
     private static readonly char[] InvalidFolderNameCharacters = System.IO.Path.GetInvalidFileNameChars();
 
-    public async Task<LibraryExportOperationResult> ExportPreferredCopiesAsync(string destinationRoot, IProgress<LibraryExportProgress>? progress, CancellationToken ct)
+    public async Task<LibraryExportOperationResult> ExportPreferredCopiesAsync(string destinationRoot, bool onlyWanted, IProgress<LibraryExportProgress>? progress, CancellationToken ct)
     {
-        var files = await repository.GetPreferredExportFilesAsync(ct);
+        var files = await repository.GetPreferredExportFilesAsync(onlyWanted, ct);
         long copied = 0, skipped = 0, errors = 0, completed = 0;
         foreach (var file in files)
         {

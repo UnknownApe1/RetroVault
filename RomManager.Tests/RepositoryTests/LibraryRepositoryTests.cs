@@ -140,6 +140,25 @@ public sealed class LibraryRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchGamesAsync_WantedFilterOnlyReturnsGamesMarkedWanted()
+    {
+        var (gameId, _, _) = await SeedTwoCopiesAsync();
+        await using (var db = CreateContext())
+        {
+            var system = await db.Systems.SingleAsync();
+            db.Games.Add(new Game { CanonicalTitle = "Not Wanted", SortTitle = "Not Wanted", NormalizedTitle = "notwanted", SystemDefinitionId = system.Id });
+            await db.SaveChangesAsync();
+        }
+        await repository.SetGamesWantedAsync([gameId], true, CancellationToken.None);
+
+        var wanted = await repository.SearchGamesAsync(null, null, LibraryViewFilter.Wanted, CancellationToken.None);
+
+        var summary = Assert.Single(wanted);
+        Assert.Equal("Test Game", summary.Title);
+        Assert.True(summary.IsWanted);
+    }
+
+    [Fact]
     public async Task SearchGamesAsync_NeedsReviewFilterReturnsNoMatchAndErrorCopies()
     {
         await using var db = CreateContext();
@@ -178,11 +197,25 @@ public sealed class LibraryRepositoryTests : IDisposable
         await SeedTwoCopiesAsync();
         await repository.RecalculatePreferredCopiesAsync(null, CancellationToken.None);
 
-        var files = await repository.GetPreferredExportFilesAsync(CancellationToken.None);
+        var files = await repository.GetPreferredExportFilesAsync(onlyWanted: false, CancellationToken.None);
 
         var file = Assert.Single(files);
         Assert.Equal("NES", file.SystemName);
         Assert.Equal("Test Game (USA).nes", file.FileName);
+    }
+
+    [Fact]
+    public async Task GetPreferredExportFilesAsync_WithOnlyWanted_ExcludesGamesNotMarkedWanted()
+    {
+        var (gameId, _, _) = await SeedTwoCopiesAsync();
+        await repository.RecalculatePreferredCopiesAsync(null, CancellationToken.None);
+
+        var beforeMarking = await repository.GetPreferredExportFilesAsync(onlyWanted: true, CancellationToken.None);
+        await repository.SetGamesWantedAsync([gameId], true, CancellationToken.None);
+        var afterMarking = await repository.GetPreferredExportFilesAsync(onlyWanted: true, CancellationToken.None);
+
+        Assert.Empty(beforeMarking);
+        Assert.Single(afterMarking);
     }
 
     [Fact]

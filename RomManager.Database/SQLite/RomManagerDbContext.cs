@@ -21,6 +21,7 @@ public sealed class RomManagerDbContext(DbContextOptions<RomManagerDbContext> op
         b.Entity<Game>().HasIndex(x => new { x.SystemDefinitionId, x.NormalizedTitle }).IsUnique();
         b.Entity<Game>().HasIndex(x => x.SortTitle);
         b.Entity<Game>().HasIndex(x => new { x.SystemDefinitionId, x.SortTitle });
+        b.Entity<Game>().HasIndex(x => x.IsWanted);
         b.Entity<GameFile>().HasIndex(x => x.FullPath).IsUnique();
         b.Entity<GameFile>().HasIndex(x => new { x.QuickHash, x.Size });
         b.Entity<GameFile>().HasIndex(x => new { x.GameId, x.Status });

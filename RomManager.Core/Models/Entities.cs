@@ -52,6 +52,7 @@ public sealed class Game
     public SystemDefinition? SystemDefinition { get; set; }
     public int? Year { get; set; }
     public GameStatus Status { get; set; } = GameStatus.Active;
+    public bool IsWanted { get; set; }
     public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset Updated { get; set; } = DateTimeOffset.UtcNow;
     public List<GameFile> Files { get; set; } = [];

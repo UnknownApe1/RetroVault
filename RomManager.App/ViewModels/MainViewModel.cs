@@ -54,8 +54,11 @@ public sealed class MainViewModel : ObservableObject
         ExcludeCopyCommand = new AsyncCommand(ToggleExcludedCopyAsync, () => SelectedFile is not null && !IsScanning);
         ExcludeNonPreferredCommand = new AsyncCommand(ExcludeNonPreferredAsync, () => SelectedGames.Count > 0 && !IsScanning);
         ClearOverridesCommand = new AsyncCommand(ClearOverridesAsync, () => SelectedGames.Count > 0 && !IsScanning);
-        ExportPreferredLibraryCommand = new AsyncCommand(ExportPreferredLibraryAsync, () => !IsScanning);
-        SelectedGames.CollectionChanged += (_, _) => { ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); Raise(nameof(SelectedGamesCountText)); };
+        ExportPreferredLibraryCommand = new AsyncCommand(() => ExportLibraryAsync(onlyWanted: false), () => !IsScanning);
+        ExportWantedLibraryCommand = new AsyncCommand(() => ExportLibraryAsync(onlyWanted: true), () => !IsScanning);
+        MarkWantedCommand = new AsyncCommand(() => SetSelectedGamesWantedAsync(true), () => SelectedGames.Count > 0 && !IsScanning);
+        UnmarkWantedCommand = new AsyncCommand(() => SetSelectedGamesWantedAsync(false), () => SelectedGames.Count > 0 && !IsScanning);
+        SelectedGames.CollectionChanged += (_, _) => { ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); MarkWantedCommand.Refresh(); UnmarkWantedCommand.Refresh(); Raise(nameof(SelectedGamesCountText)); };
     }
 
     public BulkObservableCollection<GameListItem> Games { get; } = [];
@@ -68,7 +71,8 @@ public sealed class MainViewModel : ObservableObject
         new(LibraryViewFilter.MultipleVersions, "Multiple versions"),
         new(LibraryViewFilter.Missing, "Missing"),
         new(LibraryViewFilter.NeedsReview, "Needs review"),
-        new(LibraryViewFilter.PreferredCopies, "Preferred copies")
+        new(LibraryViewFilter.PreferredCopies, "Preferred copies"),
+        new(LibraryViewFilter.Wanted, "Wanted")
     ];
     public ObservableCollection<GameListItem> SelectedGames { get; } = [];
     public ObservableCollection<SystemDefinition> Systems { get; } = [];
@@ -91,6 +95,9 @@ public sealed class MainViewModel : ObservableObject
     public AsyncCommand ExcludeNonPreferredCommand { get; }
     public AsyncCommand ClearOverridesCommand { get; }
     public AsyncCommand ExportPreferredLibraryCommand { get; }
+    public AsyncCommand ExportWantedLibraryCommand { get; }
+    public AsyncCommand MarkWantedCommand { get; }
+    public AsyncCommand UnmarkWantedCommand { get; }
     public string VersionText { get; } = GetVersionText();
     public string WindowTitle => $"ROM Manager {VersionText}";
     public ScanLocation? SelectedLocation { get => selectedLocation; set { if (Set(ref selectedLocation, value)) { RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); Raise(nameof(LocationToggleLabel)); Raise(nameof(RecursiveToggleLabel)); } } }
@@ -104,7 +111,7 @@ public sealed class MainViewModel : ObservableObject
     public string SearchText { get => searchText; set { if (Set(ref searchText, value) && isInitialized) _ = RefreshLibraryAsync(250); } }
     public string StatusText { get => statusText; private set => Set(ref statusText, value); }
     public string CurrentPath { get => currentPath; private set => Set(ref currentPath, value); }
-    public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); ExportCsvCommand.Refresh(); VerifyCatalogCommand.Refresh(); ReviewDuplicateTitlesCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); ExportPreferredLibraryCommand.Refresh(); } } }
+    public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); ExportCsvCommand.Refresh(); VerifyCatalogCommand.Refresh(); ReviewDuplicateTitlesCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); ExportPreferredLibraryCommand.Refresh(); ExportWantedLibraryCommand.Refresh(); MarkWantedCommand.Refresh(); UnmarkWantedCommand.Refresh(); } } }
     public LibraryCounts Counts { get => counts; private set => Set(ref counts, value); }
     public SystemDefinition? SelectedSystem { get => selectedSystem; set { if (Set(ref selectedSystem, value) && isInitialized) _ = RefreshLibraryAsync(); } }
     public LibraryFilterOption? SelectedFilter { get => selectedFilter; set { if (Set(ref selectedFilter, value) && isInitialized) _ = RefreshLibraryAsync(); } }
@@ -317,9 +324,9 @@ public sealed class MainViewModel : ObservableObject
         await RefreshLibraryAsync();
         StatusText = "Copy inclusion updated";
     }
-    private async Task ExportPreferredLibraryAsync()
+    private async Task ExportLibraryAsync(bool onlyWanted)
     {
-        var picker = new OpenFolderDialog { Title = "Choose a destination folder for your organized library" };
+        var picker = new OpenFolderDialog { Title = onlyWanted ? "Choose a destination folder for your wanted games" : "Choose a destination folder for your organized library" };
         if (picker.ShowDialog() != true) return;
 
         scanCancellation = new();
@@ -332,12 +339,24 @@ public sealed class MainViewModel : ObservableObject
         });
         try
         {
-            var result = await Task.Run(() => libraryExport.ExportPreferredCopiesAsync(picker.FolderName, progress, scanCancellation.Token), scanCancellation.Token);
+            var result = await Task.Run(() => libraryExport.ExportPreferredCopiesAsync(picker.FolderName, onlyWanted, progress, scanCancellation.Token), scanCancellation.Token);
             StatusText = $"Export complete: {result.Copied:N0} copied, {result.Skipped:N0} already up to date, {result.Errors:N0} errors";
         }
         catch (OperationCanceledException) { StatusText = "Export canceled; files already copied were kept"; }
         catch (Exception ex) { logger.LogError(ex, "Library export stopped unexpectedly"); StatusText = $"Export paused: {ex.Message}"; }
         finally { IsScanning = false; scanCancellation.Dispose(); scanCancellation = null; CurrentPath = ""; }
+    }
+    private async Task SetSelectedGamesWantedAsync(bool wanted)
+    {
+        var ids = SelectedGames.Select(x => x.Id).ToArray();
+        if (ids.Length == 0) return;
+        try
+        {
+            await repository.SetGamesWantedAsync(ids, wanted, CancellationToken.None);
+            StatusText = wanted ? $"Marked {ids.Length:N0} game(s) as wanted" : $"Unmarked {ids.Length:N0} game(s) as wanted";
+            await RefreshLibraryAsync();
+        }
+        catch (Exception ex) { logger.LogError(ex, "Could not update wanted status"); StatusText = $"Could not update wanted status: {ex.Message}"; }
     }
     private async Task ExportLibraryCsvAsync()
     {

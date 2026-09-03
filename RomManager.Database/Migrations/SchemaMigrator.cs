@@ -27,6 +27,11 @@ internal static class SchemaMigrator
             if (version < 3)
             {
                 await ExecuteAsync(db.Database.GetDbConnection(), $"BEGIN IMMEDIATE;{SqlV3}INSERT INTO SchemaVersions(Version, AppliedUtc) VALUES (3, CURRENT_TIMESTAMP);COMMIT;", ct);
+                version = 3;
+            }
+            if (version < 4)
+            {
+                await ExecuteAsync(db.Database.GetDbConnection(), $"BEGIN IMMEDIATE;{SqlV4}INSERT INTO SchemaVersions(Version, AppliedUtc) VALUES (4, CURRENT_TIMESTAMP);COMMIT;", ct);
             }
         }
         finally { await db.Database.CloseConnectionAsync(); }
@@ -79,5 +84,10 @@ ALTER TABLE GameFiles ADD COLUMN IsExcluded INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE GameFiles ADD COLUMN PreferenceScore INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS IX_GameFiles_CatalogStatus ON GameFiles(CatalogStatus);
 CREATE INDEX IF NOT EXISTS IX_GameFiles_GameId_IsPreferred ON GameFiles(GameId, IsPreferred);
+""";
+
+    private const string SqlV4 = """
+ALTER TABLE Games ADD COLUMN IsWanted INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS IX_Games_IsWanted ON Games(IsWanted);
 """;
 }

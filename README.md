@@ -38,6 +38,7 @@ A Windows 10/11 desktop application that safely indexes ROM and game files witho
 - Multi-select bulk actions: exclude every non-preferred copy, or clear manual preference/exclusion overrides, across all selected games at once
 - Best-effort box art from [libretro-thumbnails](https://github.com/libretro-thumbnails) in the detail panel and as a small thumbnail per row in the game list, matched against the verified catalog name (falling back to the parsed title plus region), cached locally with a negative-result cache so a miss is not retried for 30 days. Matching depends on the title being close to No-Intro naming — collections whose filenames carry their own ranking/numbering prefix will mostly miss
 - Export Good Roms: copies every game's preferred, non-excluded version into a destination folder organized one subfolder per system, preserving the original filename. Re-running it only copies files that are new or changed (matched by size), so it is safe to use repeatedly as your curation improves. Source files are only ever opened for reading.
+- Wanted flag: mark individual games (via multi-select) as Wanted, filter the library down to just them, and use Export Wanted Games to copy only that curated subset — the same preferred-copy scoring and folder-per-system layout as Export Good Roms, just scoped to games you've explicitly chosen instead of the whole library.
 - Rotating session logs under `%LOCALAPPDATA%\CozziForged\RomManager\Logs` (2 MiB per file, 20 files maximum, 14-day retention)
 - Optional `--verbose-scan` diagnostics for per-file unchanged and unsupported skip reasons
 - xUnit coverage for parsing, grouping, hashing, enumeration, and ambiguous format hints
@@ -102,6 +103,7 @@ Starting with v1.4.0, place the patch that matches your installed version in `C:
 8. Use **Review Duplicate Titles** to scan the whole library for likely-duplicate game titles (typos, alternate spellings, punctuation differences) and choose which copy to keep for each pair. Nothing merges until you pick a side.
 9. Select multiple games in the list (click, Ctrl+click, Shift+click) and use **Exclude Non-Preferred Copies** to keep only the automatically preferred copy per game, or **Clear Overrides** to reset manual choices back to automatic.
 10. Use **Export Good Roms** to copy every game's preferred copy into a folder you choose, organized one subfolder per system — a curated backup you can restore from if a device is reset or replaced. Use **Use This Copy** on any file first if you want a specific version exported instead of the automatic pick.
+11. To export only a subset instead of the whole library, select games and use **Mark Wanted**, review them with the **Wanted** filter, then use **Export Wanted Games**. **Unmark Wanted** removes games from that set.
 
 Configured locations are reconciled when **Scan Now** is selected. Unchanged files avoid parsing and hashing. Files that disappear are marked `Missing`; reconnecting and rescanning restores them.
 
