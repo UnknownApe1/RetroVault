@@ -15,6 +15,10 @@ public interface IHashService
     Task<string> ComputeQuickHashAsync(string path, long size, CancellationToken cancellationToken);
     Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken);
 }
+public interface ICatalogVerificationService
+{
+    Task<CatalogVerificationResult> VerifyAsync(string? systemKey, IProgress<CatalogVerificationProgress>? progress, CancellationToken cancellationToken);
+}
 public interface IFormatIdentifier { IdentificationResult Identify(FileCandidate file); bool IsCandidate(string extension); }
 public interface IArchiveInspector { Task<IdentificationResult?> IdentifyContentsAsync(FileCandidate archive, CancellationToken cancellationToken); }
 
@@ -25,6 +29,8 @@ public interface ILibraryRepository
     Task<ScanLocation> AddScanLocationAsync(string path, bool recursive, CancellationToken cancellationToken);
     Task UpdateScanLocationAsync(int id, bool enabled, bool recursive, CancellationToken cancellationToken);
     Task RemoveScanLocationAsync(int id, CancellationToken cancellationToken);
+    Task<IReadOnlyDictionary<string, ExistingFileSnapshot>> GetFileSnapshotsAsync(CancellationToken cancellationToken);
+    Task TouchUnchangedFilesAsync(IReadOnlyList<long> fileIds, DateTimeOffset lastSeen, CancellationToken cancellationToken);
     Task<GameFile?> FindFileByPathAsync(string fullPath, CancellationToken cancellationToken);
     Task UpsertFileAsync(GameFile file, CancellationToken cancellationToken);
     Task<IReadOnlyList<GameFile>> FindQuickHashMatchesAsync(string quickHash, long size, long excludingId, CancellationToken cancellationToken);
@@ -37,9 +43,14 @@ public interface ILibraryRepository
     Task<Game> GetOrCreateGameAsync(string title, string normalizedTitle, int systemId, CancellationToken cancellationToken);
     Task<int> ResolveFormatIdAsync(string systemKey, string extension, string formatName, CancellationToken cancellationToken);
     Task<long> GetOrCreateFileGroupAsync(long gameId, string displayName, int? discNumber, CancellationToken cancellationToken);
-    Task<IReadOnlyList<GameSummary>> SearchGamesAsync(string? search, int? systemId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<GameSummary>> SearchGamesAsync(string? search, int? systemId, LibraryViewFilter filter, CancellationToken cancellationToken);
     Task<Game?> GetGameDetailsAsync(long id, CancellationToken cancellationToken);
     Task<LibraryCounts> GetCountsAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<LibraryExportRow>> GetLibraryExportRowsAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<VerificationCandidate>> GetVerificationCandidatesAsync(string? systemKey, CancellationToken cancellationToken);
+    Task ApplyCatalogVerificationAsync(IReadOnlyList<CatalogVerificationUpdate> updates, CancellationToken cancellationToken);
+    Task RecalculatePreferredCopiesAsync(string? systemKey, CancellationToken cancellationToken);
+    Task SetCopyPreferenceAsync(long fileId, bool manuallyPreferred, bool excluded, CancellationToken cancellationToken);
     Task<IReadOnlyList<SystemDefinition>> GetSystemsAsync(CancellationToken cancellationToken);
 }
 

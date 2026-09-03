@@ -16,6 +16,7 @@ using RomManager.Formats.FormatDefinitions;
 using RomManager.Formats.Parsers;
 using RomManager.Infrastructure.FileSystem;
 using RomManager.Infrastructure.Logging;
+using RomManager.Infrastructure.Catalog;
 
 namespace RomManager.App;
 
@@ -37,6 +38,7 @@ public partial class App : Application
         var appDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CozziForged", "RomManager");
         Directory.CreateDirectory(appDirectory);
         crashLogPath = Path.Combine(appDirectory, "Logs", "crash.log");
+        var verboseScanLogging = e.Args.Any(x => string.Equals(x, "--verbose-scan", StringComparison.OrdinalIgnoreCase));
         DispatcherUnhandledException += (_, args) =>
         {
             WriteCrashLog(args.Exception);
@@ -57,9 +59,15 @@ public partial class App : Application
             services.AddDbContextFactory<RomManagerDbContext>(o => o.UseSqlite($"Data Source={Path.Combine(appDirectory, "library.db")};Default Timeout=10;Pooling=True"));
             services.AddSingleton<ILibraryRepository, LibraryRepository>();
             services.AddSingleton<ILibraryScanner, LibraryScanner>();
+            services.AddSingleton<ICatalogVerificationService, LibretroCatalogVerificationService>();
             services.AddSingleton<MainViewModel>();
             services.AddSingleton<MainWindow>();
-        }).ConfigureLogging((_, logging) => logging.AddProvider(new FileLoggerProvider(Path.Combine(appDirectory, "Logs")))).Build();
+        }).ConfigureLogging((_, logging) =>
+        {
+            logging.ClearProviders();
+            logging.SetMinimumLevel(verboseScanLogging ? LogLevel.Debug : LogLevel.Information);
+            logging.AddProvider(new FileLoggerProvider(Path.Combine(appDirectory, "Logs"), verboseScanLogging));
+        }).Build();
         await host.StartAsync();
         try
         {

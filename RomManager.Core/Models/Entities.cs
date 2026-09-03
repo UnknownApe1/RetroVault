@@ -3,6 +3,7 @@ namespace RomManager.Core.Models;
 public enum FileCategory { Rom, CartridgeImage, DiscImage, MultiFileDisc, Archive, ArcadeSet, FloppyImage, TapeImage, Package, DirectoryGame, Unknown }
 public enum FileStatus { Normal, Duplicate, Missing, Changed, Unsupported, Corrupt, Unverified, Grouped }
 public enum GameStatus { Active, Missing, NeedsReview }
+public enum CatalogVerificationStatus { Unknown, Verified, NoMatch, Unsupported, Error }
 
 public sealed class SystemDefinition
 {
@@ -82,6 +83,14 @@ public sealed class GameFile
     public int? DiscNumber { get; set; }
     public int? TrackNumber { get; set; }
     public FileStatus Status { get; set; } = FileStatus.Unverified;
+    public CatalogVerificationStatus CatalogStatus { get; set; } = CatalogVerificationStatus.Unknown;
+    public string? CatalogSource { get; set; }
+    public string? CatalogName { get; set; }
+    public DateTimeOffset? CatalogVerifiedAt { get; set; }
+    public bool IsPreferred { get; set; }
+    public bool IsManuallyPreferred { get; set; }
+    public bool IsExcluded { get; set; }
+    public int PreferenceScore { get; set; }
     public DateTimeOffset LastSeen { get; set; } = DateTimeOffset.UtcNow;
     public List<FileHash> Hashes { get; set; } = [];
 }

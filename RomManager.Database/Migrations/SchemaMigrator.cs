@@ -22,6 +22,11 @@ internal static class SchemaMigrator
             if (version < 2)
             {
                 await ExecuteAsync(db.Database.GetDbConnection(), $"BEGIN IMMEDIATE;{SqlV2}INSERT INTO SchemaVersions(Version, AppliedUtc) VALUES (2, CURRENT_TIMESTAMP);COMMIT;", ct);
+                version = 2;
+            }
+            if (version < 3)
+            {
+                await ExecuteAsync(db.Database.GetDbConnection(), $"BEGIN IMMEDIATE;{SqlV3}INSERT INTO SchemaVersions(Version, AppliedUtc) VALUES (3, CURRENT_TIMESTAMP);COMMIT;", ct);
             }
         }
         finally { await db.Database.CloseConnectionAsync(); }
@@ -61,5 +66,18 @@ CREATE INDEX IF NOT EXISTS IX_GameFiles_ScanLocationId_LastSeen ON GameFiles(Sca
 CREATE INDEX IF NOT EXISTS IX_FileGroups_GameId_DiscNumber_DisplayName ON FileGroups(GameId, DiscNumber, DisplayName);
 CREATE INDEX IF NOT EXISTS IX_Hashes_GameFileId_Algorithm ON Hashes(GameFileId, Algorithm);
 CREATE INDEX IF NOT EXISTS IX_Hashes_Algorithm_Hash ON Hashes(Algorithm, Hash);
+""";
+
+    private const string SqlV3 = """
+ALTER TABLE GameFiles ADD COLUMN CatalogStatus TEXT NOT NULL DEFAULT 'Unknown';
+ALTER TABLE GameFiles ADD COLUMN CatalogSource TEXT NULL;
+ALTER TABLE GameFiles ADD COLUMN CatalogName TEXT NULL;
+ALTER TABLE GameFiles ADD COLUMN CatalogVerifiedAt TEXT NULL;
+ALTER TABLE GameFiles ADD COLUMN IsPreferred INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE GameFiles ADD COLUMN IsManuallyPreferred INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE GameFiles ADD COLUMN IsExcluded INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE GameFiles ADD COLUMN PreferenceScore INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS IX_GameFiles_CatalogStatus ON GameFiles(CatalogStatus);
+CREATE INDEX IF NOT EXISTS IX_GameFiles_GameId_IsPreferred ON GameFiles(GameId, IsPreferred);
 """;
 }

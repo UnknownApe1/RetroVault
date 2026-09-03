@@ -7,40 +7,57 @@ namespace RomManager.Core.Scanner;
 
 public sealed class LibraryScanner(IFileSystem fileSystem, IFormatIdentifier formats, IArchiveInspector archives, IFileNameParser parser, IHashService hashes, ILibraryRepository repository, ILogger<LibraryScanner> logger) : ILibraryScanner
 {
+    private const int UnchangedBatchSize = 400;
+
     public async Task<ScanResult> ScanAllAsync(IProgress<ScanProgress>? progress, CancellationToken cancellationToken)
     {
         var totals = new Counters();
+        var snapshots = new Dictionary<string, ExistingFileSnapshot>(await repository.GetFileSnapshotsAsync(cancellationToken), StringComparer.OrdinalIgnoreCase);
         foreach (var location in await repository.GetScanLocationsAsync(true, cancellationToken))
-            totals.Add(await ScanLocationAsync(location, progress, cancellationToken));
+            totals.Add(await ScanLocationCoreAsync(location, snapshots, progress, cancellationToken));
+        await repository.RecalculatePreferredCopiesAsync(null, cancellationToken);
         return totals.Result();
     }
 
     public async Task<ScanResult> ScanLocationAsync(ScanLocation location, IProgress<ScanProgress>? progress, CancellationToken cancellationToken)
     {
+        var snapshots = new Dictionary<string, ExistingFileSnapshot>(await repository.GetFileSnapshotsAsync(cancellationToken), StringComparer.OrdinalIgnoreCase);
+        var result = await ScanLocationCoreAsync(location, snapshots, progress, cancellationToken);
+        await repository.RecalculatePreferredCopiesAsync(null, cancellationToken);
+        return result;
+    }
+
+    private async Task<ScanResult> ScanLocationCoreAsync(ScanLocation location, Dictionary<string, ExistingFileSnapshot> snapshots, IProgress<ScanProgress>? progress, CancellationToken cancellationToken)
+    {
         if (!fileSystem.DirectoryExists(location.Path)) { logger.LogWarning("Scan location unavailable: {Location}", location.Path); return new ScanResult(0, 0, 0, 0, 0, 0, [$"Location unavailable: {location.Path}"]); }
         var started = DateTimeOffset.UtcNow;
         await repository.BeginScanAsync(location.Id, started, cancellationToken);
-        logger.LogInformation("Scan started for {Location}", location.Path);
+        logger.LogInformation("Scan started for {Location}; {KnownFiles} indexed file snapshots are cached", location.Path, snapshots.Count);
         var counts = new Counters();
+        var scanClock = Stopwatch.StartNew();
         var progressClock = Stopwatch.StartNew();
+        var unchangedBatch = new List<long>(UnchangedBatchSize);
         await foreach (var candidate in fileSystem.EnumerateFilesAsync(location.Path, location.Recursive, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
             counts.Discovered++;
-            if (!formats.IsCandidate(candidate.Extension)) { counts.Skipped++; Report(candidate.FullPath); continue; }
+            snapshots.TryGetValue(candidate.FullPath, out var snapshot);
+            if (!formats.IsCandidate(candidate.Extension))
+            {
+                if (snapshot is not null) await QueueUnchangedAsync(snapshot.Id);
+                counts.AddUnsupported(candidate.Extension); logger.LogDebug("Skipped unsupported file {Path} ({Extension})", candidate.FullPath, candidate.Extension); Report(candidate.FullPath); continue;
+            }
             try
             {
-                var existing = await repository.FindFileByPathAsync(candidate.FullPath, cancellationToken);
-                if (existing is not null && existing.Size == candidate.Size && existing.ModifiedDate == candidate.Modified)
+                if (snapshot is not null && snapshot.Size == candidate.Size && snapshot.ModifiedDate == candidate.Modified)
                 {
-                    existing.LastSeen = started;
-                    if (existing.Status == FileStatus.Missing) existing.Status = FileStatus.Normal;
-                    await repository.UpsertFileAsync(existing, cancellationToken);
-                    counts.Skipped++; Report(candidate.FullPath); continue;
+                    await QueueUnchangedAsync(snapshot.Id);
+                    counts.Skipped++; counts.Unchanged++; logger.LogDebug("Skipped unchanged file {Path}", candidate.FullPath); Report(candidate.FullPath); continue;
                 }
 
+                var existing = snapshot is null ? null : await repository.FindFileByPathAsync(candidate.FullPath, cancellationToken);
                 var identified = candidate.Extension == ".zip" ? await archives.IdentifyContentsAsync(candidate, cancellationToken) ?? formats.Identify(candidate) : formats.Identify(candidate);
-                if (identified.System is null || identified.Format is null) { counts.Skipped++; Report(candidate.FullPath); continue; }
+                if (identified.System is null || identified.Format is null) { if (snapshot is not null) await QueueUnchangedAsync(snapshot.Id); counts.AddUnsupported(candidate.Extension); logger.LogDebug("Skipped unidentified file {Path} ({Reason})", candidate.FullPath, identified.Reason); Report(candidate.FullPath); continue; }
                 var parsed = parser.Parse(candidate.FileName);
                 var game = await repository.GetOrCreateGameAsync(parsed.Title, parsed.NormalizedTitle, identified.System.Id, cancellationToken);
                 var file = existing ?? new GameFile { FullPath = candidate.FullPath, FileName = candidate.FileName, Extension = candidate.Extension, ScanLocationId = location.Id };
@@ -62,7 +79,14 @@ public sealed class LibraryScanner(IFileSystem fileSystem, IFormatIdentifier for
                 file.QuickHash = await hashes.ComputeQuickHashAsync(candidate.FullPath, candidate.Size, cancellationToken);
                 file.LastSeen = started;
                 file.Status = FileStatus.Normal;
+                file.CatalogStatus = CatalogVerificationStatus.Unknown;
+                file.CatalogSource = null;
+                file.CatalogName = null;
+                file.CatalogVerifiedAt = null;
+                file.IsPreferred = false;
+                file.PreferenceScore = 0;
                 await repository.UpsertFileAsync(file, cancellationToken);
+                snapshots[candidate.FullPath] = new ExistingFileSnapshot(file.Id, file.FullPath, file.Size, file.ModifiedDate, file.Status);
                 var collisions = await repository.FindQuickHashMatchesAsync(file.QuickHash, file.Size, file.Id, cancellationToken);
                 if (collisions.Count > 0)
                 {
@@ -83,14 +107,35 @@ public sealed class LibraryScanner(IFileSystem fileSystem, IFormatIdentifier for
                 counts.Processed++;
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException and not StackOverflowException and not AccessViolationException)
-            { counts.AddError($"{candidate.FullPath}: {ex.Message}"); logger.LogWarning(ex, "Could not index {Path}", candidate.FullPath); }
+            {
+                if (snapshot is not null) await QueueUnchangedAsync(snapshot.Id);
+                counts.AddError($"{candidate.FullPath}: {ex.Message}"); logger.LogWarning(ex, "Could not index {Path}", candidate.FullPath);
+            }
             Report(candidate.FullPath);
         }
+        await FlushUnchangedAsync();
         counts.Missing = await repository.MarkUnseenFilesMissingAsync(location.Id, started, cancellationToken);
         await repository.CompleteScanAsync(location.Id, started, counts.Discovered, cancellationToken);
         Report(location.Path, true);
-        logger.LogInformation("Scan completed for {Location}: {Discovered} discovered, {Processed} processed, {Skipped} skipped, {Errors} errors", location.Path, counts.Discovered, counts.Processed, counts.Skipped, counts.Errors.Count);
+        var elapsed = scanClock.Elapsed;
+        var rate = elapsed.TotalSeconds <= 0 ? counts.Discovered : counts.Discovered / elapsed.TotalSeconds;
+        logger.LogInformation("Scan completed for {Location} in {Elapsed}: {Rate:N1} files/sec; {Discovered} discovered, {Processed} processed, {Skipped} skipped ({Unchanged} unchanged, {Unsupported} unsupported), {Errors} errors", location.Path, elapsed, rate, counts.Discovered, counts.Processed, counts.Skipped, counts.Unchanged, counts.Unsupported, counts.Errors.Count);
+        if (counts.UnsupportedByExtension.Count > 0)
+            logger.LogInformation("Unsupported extension summary for {Location}: {Extensions}", location.Path, string.Join(", ", counts.UnsupportedByExtension.OrderByDescending(x => x.Value).Select(x => $"{(string.IsNullOrEmpty(x.Key) ? "[no extension]" : x.Key)}={x.Value:N0}")));
         return counts.Result();
+
+        async Task QueueUnchangedAsync(long id)
+        {
+            unchangedBatch.Add(id);
+            if (unchangedBatch.Count >= UnchangedBatchSize) await FlushUnchangedAsync();
+        }
+
+        async Task FlushUnchangedAsync()
+        {
+            if (unchangedBatch.Count == 0) return;
+            await repository.TouchUnchangedFilesAsync(unchangedBatch, started, cancellationToken);
+            unchangedBatch.Clear();
+        }
 
         void Report(string current, bool force = false)
         {
@@ -102,9 +147,11 @@ public sealed class LibraryScanner(IFileSystem fileSystem, IFormatIdentifier for
 
     private sealed class Counters
     {
-        public long Discovered, Processed, Skipped, Added, Changed, Missing;
+        public long Discovered, Processed, Skipped, Added, Changed, Missing, Unchanged, Unsupported;
         public List<string> Errors { get; } = [];
+        public Dictionary<string, long> UnsupportedByExtension { get; } = new(StringComparer.OrdinalIgnoreCase);
         public void AddError(string message) { if (Errors.Count < 1000) Errors.Add(message); }
+        public void AddUnsupported(string extension) { Skipped++; Unsupported++; UnsupportedByExtension[extension] = UnsupportedByExtension.GetValueOrDefault(extension) + 1; }
         public void Add(ScanResult r) { Discovered += r.Discovered; Processed += r.Processed; Skipped += r.Skipped; Added += r.Added; Changed += r.Changed; Missing += r.Missing; Errors.AddRange(r.Errors); }
         public ScanResult Result() => new(Discovered, Processed, Skipped, Added, Changed, Missing, Errors);
     }

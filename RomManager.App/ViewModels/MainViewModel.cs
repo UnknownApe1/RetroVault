@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Windows;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
@@ -14,21 +16,23 @@ public sealed class MainViewModel : ObservableObject
     private readonly ILibraryRepository repository;
     private readonly ILibraryScanner scanner;
     private readonly IHashService hashes;
+    private readonly ICatalogVerificationService catalogVerification;
     private readonly ILogger<MainViewModel> logger;
     private CancellationTokenSource? scanCancellation;
     private CancellationTokenSource? refreshCancellation;
     private string searchText = "", statusText = "Ready", currentPath = "";
     private bool isScanning, isInitialized;
     private SystemDefinition? selectedSystem;
+    private LibraryFilterOption? selectedFilter;
     private GameSummary? selectedGame;
     private GameFile? selectedFile;
     private ScanLocation? selectedLocation;
     private Game? gameDetails;
     private LibraryCounts counts = new(0, 0, 0, 0);
 
-    public MainViewModel(ILibraryRepository repository, ILibraryScanner scanner, IHashService hashes, ILogger<MainViewModel> logger)
+    public MainViewModel(ILibraryRepository repository, ILibraryScanner scanner, IHashService hashes, ICatalogVerificationService catalogVerification, ILogger<MainViewModel> logger)
     {
-        this.repository = repository; this.scanner = scanner; this.hashes = hashes; this.logger = logger;
+        this.repository = repository; this.scanner = scanner; this.hashes = hashes; this.catalogVerification = catalogVerification; this.logger = logger;
         ScanCommand = new AsyncCommand(ScanAsync, () => !IsScanning);
         CancelCommand = new RelayCommand(() => scanCancellation?.Cancel(), () => IsScanning);
         AddFolderCommand = new AsyncCommand(AddFolderAsync, () => !IsScanning);
@@ -39,9 +43,24 @@ public sealed class MainViewModel : ObservableObject
         OpenFolderCommand = new RelayCommand(OpenSelectedFolder, () => SelectedFile is not null);
         CopyPathCommand = new RelayCommand(() => { if (SelectedFile is not null) Clipboard.SetText(SelectedFile.FullPath); }, () => SelectedFile is not null);
         VerifyHashCommand = new AsyncCommand(VerifyHashAsync, () => SelectedFile is not null && !IsScanning);
+        ExportCsvCommand = new AsyncCommand(ExportLibraryCsvAsync, () => !IsScanning);
+        VerifyCatalogCommand = new AsyncCommand(VerifyCatalogAsync, () => !IsScanning);
+        PreferCopyCommand = new AsyncCommand(TogglePreferredCopyAsync, () => SelectedFile is not null && !IsScanning);
+        ExcludeCopyCommand = new AsyncCommand(ToggleExcludedCopyAsync, () => SelectedFile is not null && !IsScanning);
     }
 
     public BulkObservableCollection<GameSummary> Games { get; } = [];
+    public IReadOnlyList<LibraryFilterOption> LibraryFilters { get; } =
+    [
+        new(LibraryViewFilter.All, "All games"),
+        new(LibraryViewFilter.Verified, "Verified"),
+        new(LibraryViewFilter.Unverified, "Unverified"),
+        new(LibraryViewFilter.ExactDuplicates, "Exact duplicates"),
+        new(LibraryViewFilter.MultipleVersions, "Multiple versions"),
+        new(LibraryViewFilter.Missing, "Missing"),
+        new(LibraryViewFilter.NeedsReview, "Needs review"),
+        new(LibraryViewFilter.PreferredCopies, "Preferred copies")
+    ];
     public ObservableCollection<SystemDefinition> Systems { get; } = [];
     public ObservableCollection<ScanLocation> ScanLocations { get; } = [];
     public AsyncCommand ScanCommand { get; }
@@ -54,23 +73,39 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand OpenFolderCommand { get; }
     public RelayCommand CopyPathCommand { get; }
     public AsyncCommand VerifyHashCommand { get; }
+    public AsyncCommand ExportCsvCommand { get; }
+    public AsyncCommand VerifyCatalogCommand { get; }
+    public AsyncCommand PreferCopyCommand { get; }
+    public AsyncCommand ExcludeCopyCommand { get; }
+    public string VersionText { get; } = GetVersionText();
+    public string WindowTitle => $"ROM Manager {VersionText}";
     public ScanLocation? SelectedLocation { get => selectedLocation; set { if (Set(ref selectedLocation, value)) { RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); Raise(nameof(LocationToggleLabel)); Raise(nameof(RecursiveToggleLabel)); } } }
     public string LocationToggleLabel => SelectedLocation?.Enabled == true ? "Disable" : "Enable";
     public string RecursiveToggleLabel => SelectedLocation?.Recursive == true ? "Recursive: On" : "Recursive: Off";
-    public GameFile? SelectedFile { get => selectedFile; set { if (Set(ref selectedFile, value)) { OpenFolderCommand.Refresh(); CopyPathCommand.Refresh(); VerifyHashCommand.Refresh(); } } }
+    public GameFile? SelectedFile { get => selectedFile; set { if (Set(ref selectedFile, value)) { OpenFolderCommand.Refresh(); CopyPathCommand.Refresh(); VerifyHashCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); Raise(nameof(PreferCopyLabel)); Raise(nameof(ExcludeCopyLabel)); } } }
+    public string PreferCopyLabel => SelectedFile?.IsManuallyPreferred == true ? "Use Automatic Choice" : "Use This Copy";
+    public string ExcludeCopyLabel => SelectedFile?.IsExcluded == true ? "Include Copy" : "Exclude Copy";
     public string SearchText { get => searchText; set { if (Set(ref searchText, value) && isInitialized) _ = RefreshLibraryAsync(250); } }
     public string StatusText { get => statusText; private set => Set(ref statusText, value); }
     public string CurrentPath { get => currentPath; private set => Set(ref currentPath, value); }
-    public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); } } }
+    public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); ExportCsvCommand.Refresh(); VerifyCatalogCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); } } }
     public LibraryCounts Counts { get => counts; private set => Set(ref counts, value); }
     public SystemDefinition? SelectedSystem { get => selectedSystem; set { if (Set(ref selectedSystem, value) && isInitialized) _ = RefreshLibraryAsync(); } }
+    public LibraryFilterOption? SelectedFilter { get => selectedFilter; set { if (Set(ref selectedFilter, value) && isInitialized) _ = RefreshLibraryAsync(); } }
     public GameSummary? SelectedGame { get => selectedGame; set { if (Set(ref selectedGame, value)) _ = LoadDetailsAsync(value?.Id); } }
     public Game? GameDetails { get => gameDetails; private set { Set(ref gameDetails, value); Raise(nameof(DetailFiles)); } }
     public IReadOnlyList<GameFile> DetailFiles => GameDetails?.Files ?? [];
 
+    private static string GetVersionText()
+    {
+        var version = typeof(MainViewModel).Assembly.GetName().Version;
+        return version is null ? "version unknown" : $"v{version.Major}.{version.Minor}.{version.Build}";
+    }
+
     public async Task InitializeAsync()
     {
         StatusText = "Loading library...";
+        SelectedFilter = LibraryFilters[0];
         await Task.Yield();
         var interrupted = await Task.Run(() => repository.HasInterruptedScanAsync(CancellationToken.None));
         await RefreshLocationsAsync(); await RefreshSystemsAsync(); await RefreshLibraryAsync();
@@ -126,10 +161,11 @@ public sealed class MainViewModel : ObservableObject
         {
             if (delayMilliseconds > 0) await Task.Delay(delayMilliseconds, token);
             var search = SearchText;
+            var filter = SelectedFilter?.Value ?? LibraryViewFilter.All;
             int? systemId = SelectedSystem is { Id: > 0 } ? SelectedSystem.Id : null;
             var result = await Task.Run(async () =>
             {
-                var games = await repository.SearchGamesAsync(search, systemId, token);
+                var games = await repository.SearchGamesAsync(search, systemId, filter, token);
                 var counts = await repository.GetCountsAsync(token);
                 return (games, counts);
             }, token);
@@ -156,6 +192,102 @@ public sealed class MainViewModel : ObservableObject
         StatusText = $"Verifying {SelectedFile.FileName}...";
         try { var sha = await hashes.ComputeSha256Async(SelectedFile.FullPath, CancellationToken.None); await repository.SaveSha256Async(SelectedFile.Id, sha, CancellationToken.None); await repository.MarkExactDuplicatesAsync(sha, CancellationToken.None); StatusText = $"SHA-256 verified: {sha[..12]}..."; await RefreshLibraryAsync(); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { StatusText = $"Verification failed: {ex.Message}"; }
+    }
+    private async Task VerifyCatalogAsync()
+    {
+        var systemKey = SelectedSystem is { Id: > 0 } ? SelectedSystem.Key : null;
+        if (systemKey is null && MessageBox.Show("Verify every supported system? This reads each ROM in full and may take several hours for a large library. You can instead select one system first.", "Verify full library", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+
+        scanCancellation = new();
+        IsScanning = true;
+        StatusText = systemKey is null ? "Preparing full catalog verification..." : $"Preparing {SelectedSystem!.Name} verification...";
+        var progress = new Progress<CatalogVerificationProgress>(p =>
+        {
+            CurrentPath = p.CurrentItem;
+            StatusText = $"Catalogs {p.SystemsCompleted:N0}/{p.SystemsTotal:N0} | Files {p.FilesCompleted:N0}/{p.FilesTotal:N0}";
+        });
+        try
+        {
+            var result = await Task.Run(() => catalogVerification.VerifyAsync(systemKey, progress, scanCancellation.Token), scanCancellation.Token);
+            StatusText = $"Catalog verification complete: {result.Verified:N0} verified, {result.NoMatch:N0} unmatched, {result.Unsupported:N0} unsupported, {result.Errors:N0} errors";
+        }
+        catch (OperationCanceledException) { StatusText = "Catalog verification canceled; completed results were saved"; }
+        catch (Exception ex) { logger.LogError(ex, "Catalog verification stopped unexpectedly"); StatusText = $"Catalog verification paused: {ex.Message}"; }
+        finally
+        {
+            IsScanning = false;
+            scanCancellation.Dispose();
+            scanCancellation = null;
+            CurrentPath = "";
+            await RefreshLibraryAsync();
+            if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
+        }
+    }
+    private async Task TogglePreferredCopyAsync()
+    {
+        if (SelectedFile is null) return;
+        await repository.SetCopyPreferenceAsync(SelectedFile.Id, !SelectedFile.IsManuallyPreferred, false, CancellationToken.None);
+        if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
+        await RefreshLibraryAsync();
+        StatusText = "Preferred-copy choice updated";
+    }
+
+    private async Task ToggleExcludedCopyAsync()
+    {
+        if (SelectedFile is null) return;
+        await repository.SetCopyPreferenceAsync(SelectedFile.Id, false, !SelectedFile.IsExcluded, CancellationToken.None);
+        if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
+        await RefreshLibraryAsync();
+        StatusText = "Copy inclusion updated";
+    }
+    private async Task ExportLibraryCsvAsync()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export ROM library inventory",
+            Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+            DefaultExt = ".csv",
+            AddExtension = true,
+            FileName = $"rom-library-{DateTime.Now:yyyyMMdd-HHmmss}.csv"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        StatusText = "Preparing full library export...";
+        try
+        {
+            var rows = await Task.Run(() => repository.GetLibraryExportRowsAsync(CancellationToken.None));
+            await Task.Run(() => WriteCsvAsync(dialog.FileName, rows, CancellationToken.None));
+            StatusText = $"Exported {rows.Count:N0} files to {dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not export the library inventory");
+            StatusText = $"Export failed: {ex.Message}";
+        }
+    }
+
+    private static async Task WriteCsvAsync(string path, IReadOnlyList<LibraryExportRow> rows, CancellationToken ct)
+    {
+        await using var writer = new StreamWriter(path, false, new UTF8Encoding(true));
+        await writer.WriteLineAsync("System,Game Title,File Name,Full Path,Source Folder,Format,Size Bytes,Modified UTC,Region,Language,Revision,Version,Status,Catalog Status,Catalog Source,Catalog Name,Preferred,Manual Preference,Excluded,Preference Score,Quick Hash,SHA-256,SHA-1".AsMemory(), ct);
+        foreach (var row in rows)
+        {
+            ct.ThrowIfCancellationRequested();
+            var values = new object?[]
+            {
+                row.System, row.GameTitle, row.FileName, row.FullPath, row.SourcePath, row.Format, row.Size,
+                row.ModifiedDate.UtcDateTime.ToString("O", CultureInfo.InvariantCulture), row.Region, row.Language,
+                row.Revision, row.Version, row.Status, row.CatalogStatus, row.CatalogSource, row.CatalogName,
+                row.IsPreferred, row.IsManuallyPreferred, row.IsExcluded, row.PreferenceScore, row.QuickHash, row.Sha256, row.Sha1
+            };
+            await writer.WriteLineAsync(string.Join(',', values.Select(CsvValue)).AsMemory(), ct);
+        }
+    }
+
+    private static string CsvValue(object? value)
+    {
+        var text = Convert.ToString(value, CultureInfo.InvariantCulture) ?? "";
+        return "\"" + text.Replace("\"", "\"\"") + "\"";
     }
     private void OpenSelectedFolder() { if (SelectedFile is null) return; Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{SelectedFile.FullPath}\"") { UseShellExecute = true }); }
 }

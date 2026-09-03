@@ -26,10 +26,13 @@ public sealed class RomManagerDbContext(DbContextOptions<RomManagerDbContext> op
         b.Entity<GameFile>().HasIndex(x => new { x.GameId, x.Status });
         b.Entity<GameFile>().HasIndex(x => x.Status);
         b.Entity<GameFile>().HasIndex(x => new { x.ScanLocationId, x.LastSeen });
+        b.Entity<GameFile>().HasIndex(x => x.CatalogStatus);
+        b.Entity<GameFile>().HasIndex(x => new { x.GameId, x.IsPreferred });
         b.Entity<FileGroup>().HasIndex(x => new { x.GameId, x.DiscNumber, x.DisplayName });
         b.Entity<FileHash>().HasIndex(x => new { x.GameFileId, x.Algorithm });
         b.Entity<FileHash>().HasIndex(x => new { x.Algorithm, x.Hash });
         b.Entity<GameFile>().Property(x => x.Status).HasConversion<string>();
+        b.Entity<GameFile>().Property(x => x.CatalogStatus).HasConversion<string>();
         b.Entity<Game>().Property(x => x.Status).HasConversion<string>();
         b.Entity<SystemFormat>().Property(x => x.FormatType).HasConversion<string>();
         b.Entity<GameFile>().HasOne(x => x.Game).WithMany(x => x.Files).HasForeignKey(x => x.GameId).OnDelete(DeleteBehavior.SetNull);

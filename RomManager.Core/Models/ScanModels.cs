@@ -25,6 +25,54 @@ public sealed record ScanProgress(long Discovered, long Processed, long Skipped,
 
 public sealed record ScanResult(long Discovered, long Processed, long Skipped, long Added, long Changed, long Missing, IReadOnlyList<string> Errors);
 
-public sealed record GameSummary(long Id, string Title, string System, int FileCount, int DuplicateCount, FileStatus WorstStatus);
+public enum LibraryViewFilter { All, Verified, Unverified, ExactDuplicates, MultipleVersions, Missing, NeedsReview, PreferredCopies }
 
-public sealed record LibraryCounts(long Games, long Files, long Duplicates, long Missing);
+public sealed record LibraryFilterOption(LibraryViewFilter Value, string Name);
+
+public sealed record ExistingFileSnapshot(long Id, string FullPath, long Size, DateTimeOffset ModifiedDate, FileStatus Status);
+
+public sealed record GameSummary(long Id, string Title, string System, int FileCount, int DuplicateCount, int VerifiedCount, FileStatus WorstStatus);
+
+public sealed record LibraryCounts(long Games, long Files, long Duplicates, long Missing, long Verified = 0);
+
+public sealed record LibraryExportRow(
+    string System,
+    string GameTitle,
+    string FileName,
+    string FullPath,
+    string SourcePath,
+    string Format,
+    long Size,
+    DateTimeOffset ModifiedDate,
+    string? Region,
+    string? Language,
+    string? Revision,
+    string? Version,
+    FileStatus Status,
+    CatalogVerificationStatus CatalogStatus,
+    string? CatalogSource,
+    string? CatalogName,
+    bool IsPreferred,
+    bool IsManuallyPreferred,
+    bool IsExcluded,
+    int PreferenceScore,
+    string? QuickHash,
+    string? Sha256,
+    string? Sha1);
+
+public sealed record CatalogEntry(string Name, string RomName, long Size, string? Crc32, string? Md5, string? Sha1, string? Sha256);
+
+public sealed record VerificationCandidate(long Id, long GameId, string SystemKey, string FullPath, string FileName, string Extension, long Size, FileStatus Status, string? Region, string? Revision);
+
+public sealed record CatalogVerificationUpdate(long FileId, CatalogVerificationStatus Status, string Source, string? CatalogName, string? Sha1, string? Crc32, string? Error);
+
+public sealed record CatalogVerificationProgress(int SystemsCompleted, int SystemsTotal, long FilesCompleted, long FilesTotal, string CurrentItem);
+
+public sealed record CatalogVerificationResult(int Systems, long Files, long Verified, long NoMatch, long Unsupported, long Errors);
+
+public sealed class IncompleteFileEnumerationException(string rootPath, int errorCount)
+    : IOException($"The scan could not read {errorCount:N0} path(s) under {rootPath}. Indexed changes were saved, but missing-file detection was skipped for safety.")
+{
+    public string RootPath { get; } = rootPath;
+    public int ErrorCount { get; } = errorCount;
+}

@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using RomManager.Core.Models;
 using RomManager.Core.Services;
@@ -8,6 +9,11 @@ namespace RomManager.Database.Repositories;
 
 public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> factory, ISystemDefinitionProvider definitions) : ILibraryRepository
 {
+    private readonly SemaphoreSlim gameCacheGate = new(1, 1);
+    private Dictionary<int, int> sourceSystemDatabaseIds = [];
+    private Dictionary<(string SystemKey, string Extension, string FormatName), int> formatDatabaseIds = [];
+    private Dictionary<(int SourceSystemId, string NormalizedTitle), Game>? gamesByKey;
+
     public async Task InitializeAsync(CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
@@ -33,6 +39,16 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
             }
         }
         await db.SaveChangesAsync(ct);
+        var databaseSystems = await db.Systems.AsNoTracking().ToDictionaryAsync(x => x.Key, ct);
+        sourceSystemDatabaseIds = source.ToDictionary(x => x.Id, x => databaseSystems[x.Key].Id);
+        formatDatabaseIds = await db.SystemFormats.AsNoTracking().Select(x => new
+        {
+            SystemKey = x.SystemDefinition!.Key,
+            x.Extension,
+            x.FormatName,
+            x.Id
+        }).ToDictionaryAsync(x => new ValueTuple<string, string, string>(x.SystemKey, x.Extension, x.FormatName), x => x.Id, ct);
+        gamesByKey = null;
     }
 
     public async Task<IReadOnlyList<ScanLocation>> GetScanLocationsAsync(bool enabledOnly, CancellationToken ct)
@@ -52,7 +68,40 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
     { await using var db = await factory.CreateDbContextAsync(ct); var item = await db.ScanLocations.FindAsync([id], ct); if (item is null) return; item.Enabled = enabled; item.Recursive = recursive; await db.SaveChangesAsync(ct); }
 
     public async Task RemoveScanLocationAsync(int id, CancellationToken ct)
-    { await using var db = await factory.CreateDbContextAsync(ct); var item = await db.ScanLocations.FindAsync([id], ct); if (item is not null) { db.Remove(item); await db.SaveChangesAsync(ct); await db.Games.Where(x => !x.Files.Any()).ExecuteDeleteAsync(ct); } }
+    { await using var db = await factory.CreateDbContextAsync(ct); var item = await db.ScanLocations.FindAsync([id], ct); if (item is not null) { db.Remove(item); await db.SaveChangesAsync(ct); await db.Games.Where(x => !x.Files.Any()).ExecuteDeleteAsync(ct); gamesByKey = null; } }
+
+    public async Task<IReadOnlyDictionary<string, ExistingFileSnapshot>> GetFileSnapshotsAsync(CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var rows = await db.GameFiles.AsNoTracking()
+            .Select(x => new ExistingFileSnapshot(x.Id, x.FullPath, x.Size, x.ModifiedDate, x.Status)).ToListAsync(ct);
+        var snapshots = new Dictionary<string, ExistingFileSnapshot>(rows.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var row in rows) snapshots[row.FullPath] = row;
+        return snapshots;
+    }
+
+    public async Task TouchUnchangedFilesAsync(IReadOnlyList<long> fileIds, DateTimeOffset lastSeen, CancellationToken ct)
+    {
+        if (fileIds.Count == 0) return;
+        await using var db = await factory.CreateDbContextAsync(ct);
+        await db.Database.OpenConnectionAsync(ct);
+        try
+        {
+            await using var command = db.Database.GetDbConnection().CreateCommand();
+            var idParameters = new string[fileIds.Count];
+            AddParameter(command, "$lastSeen", lastSeen);
+            AddParameter(command, "$missing", FileStatus.Missing.ToString());
+            AddParameter(command, "$normal", FileStatus.Normal.ToString());
+            for (var i = 0; i < fileIds.Count; i++)
+            {
+                idParameters[i] = $"$id{i}";
+                AddParameter(command, idParameters[i], fileIds[i]);
+            }
+            command.CommandText = $"UPDATE GameFiles SET LastSeen = $lastSeen, Status = CASE WHEN Status = $missing THEN $normal ELSE Status END WHERE Id IN ({string.Join(",", idParameters)});";
+            await command.ExecuteNonQueryAsync(ct);
+        }
+        finally { await db.Database.CloseConnectionAsync(); }
+    }
 
     public async Task<GameFile?> FindFileByPathAsync(string path, CancellationToken ct)
     { await using var db = await factory.CreateDbContextAsync(ct); return await db.GameFiles.SingleOrDefaultAsync(x => x.FullPath == path, ct); }
@@ -60,7 +109,12 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
     public async Task UpsertFileAsync(GameFile file, CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
-        if (file.Id == 0) db.GameFiles.Add(file); else db.GameFiles.Update(file);
+        if (file.Id == 0) db.GameFiles.Add(file);
+        else
+        {
+            if (file.CatalogStatus == CatalogVerificationStatus.Unknown) await db.Hashes.Where(x => x.GameFileId == file.Id).ExecuteDeleteAsync(ct);
+            db.GameFiles.Update(file);
+        }
         await db.SaveChangesAsync(ct);
     }
 
@@ -128,19 +182,22 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
 
     public async Task<Game> GetOrCreateGameAsync(string title, string normalizedTitle, int sourceSystemId, CancellationToken ct)
     {
+        await EnsureGameCacheAsync(ct);
+        var key = (sourceSystemId, normalizedTitle);
+        if (gamesByKey!.TryGetValue(key, out var cached)) return cached;
         await using var db = await factory.CreateDbContextAsync(ct);
-        var source = (await definitions.LoadAsync(ct)).Single(x => x.Id == sourceSystemId);
-        var systemId = await db.Systems.Where(x => x.Key == source.Key).Select(x => x.Id).SingleAsync(ct);
-        var game = await db.Games.SingleOrDefaultAsync(x => x.SystemDefinitionId == systemId && x.NormalizedTitle == normalizedTitle, ct);
-        if (game is not null) return game;
-        game = new Game { CanonicalTitle = title, SortTitle = CreateSortTitle(title), NormalizedTitle = normalizedTitle, SystemDefinitionId = systemId };
-        db.Games.Add(game); await db.SaveChangesAsync(ct); return game;
+        if (!sourceSystemDatabaseIds.TryGetValue(sourceSystemId, out var systemId)) throw new InvalidOperationException($"System {sourceSystemId} is not synchronized with the database.");
+        var game = new Game { CanonicalTitle = title, SortTitle = CreateSortTitle(title), NormalizedTitle = normalizedTitle, SystemDefinitionId = systemId };
+        db.Games.Add(game); await db.SaveChangesAsync(ct); gamesByKey[key] = game; return game;
     }
 
     public async Task<int> ResolveFormatIdAsync(string systemKey, string extension, string formatName, CancellationToken ct)
     {
+        if (formatDatabaseIds.TryGetValue((systemKey, extension, formatName), out var cached)) return cached;
         await using var db = await factory.CreateDbContextAsync(ct);
-        return await db.SystemFormats.Where(x => x.SystemDefinition!.Key == systemKey && x.Extension == extension && x.FormatName == formatName).Select(x => x.Id).SingleAsync(ct);
+        var id = await db.SystemFormats.Where(x => x.SystemDefinition!.Key == systemKey && x.Extension == extension && x.FormatName == formatName).Select(x => x.Id).SingleAsync(ct);
+        formatDatabaseIds[(systemKey, extension, formatName)] = id;
+        return id;
     }
 
     public async Task<long> GetOrCreateFileGroupAsync(long gameId, string displayName, int? discNumber, CancellationToken ct)
@@ -152,12 +209,23 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
         db.FileGroups.Add(group); await db.SaveChangesAsync(ct); return group.Id;
     }
 
-    public async Task<IReadOnlyList<GameSummary>> SearchGamesAsync(string? search, int? systemId, CancellationToken ct)
+    public async Task<IReadOnlyList<GameSummary>> SearchGamesAsync(string? search, int? systemId, LibraryViewFilter filter, CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
         var q = db.Games.AsNoTracking().AsQueryable();
         if (systemId.HasValue) q = q.Where(x => x.SystemDefinitionId == systemId);
         if (!string.IsNullOrWhiteSpace(search)) { var term = search.Trim(); q = q.Where(x => EF.Functions.Like(x.CanonicalTitle, $"%{term}%") || x.Files.Any(f => EF.Functions.Like(f.FileName, $"%{term}%") || EF.Functions.Like(f.FullPath, $"%{term}%"))); }
+        q = filter switch
+        {
+            LibraryViewFilter.Verified => q.Where(x => x.Files.Any(f => f.CatalogStatus == CatalogVerificationStatus.Verified)),
+            LibraryViewFilter.Unverified => q.Where(x => x.Files.Any(f => f.Status != FileStatus.Missing && f.CatalogStatus != CatalogVerificationStatus.Verified)),
+            LibraryViewFilter.ExactDuplicates => q.Where(x => x.Files.Any(f => f.Status == FileStatus.Duplicate)),
+            LibraryViewFilter.MultipleVersions => q.Where(x => x.Files.Count(f => f.Status != FileStatus.Missing) > 1),
+            LibraryViewFilter.Missing => q.Where(x => x.Files.Any(f => f.Status == FileStatus.Missing)),
+            LibraryViewFilter.NeedsReview => q.Where(x => x.Files.Any(f => f.CatalogStatus == CatalogVerificationStatus.NoMatch || f.CatalogStatus == CatalogVerificationStatus.Error || f.CatalogStatus == CatalogVerificationStatus.Unsupported)),
+            LibraryViewFilter.PreferredCopies => q.Where(x => x.Files.Any(f => f.IsPreferred)),
+            _ => q
+        };
         var rows = await q.OrderBy(x => x.SortTitle).Take(5000).Select(x => new
         {
             x.Id,
@@ -165,9 +233,10 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
             System = x.SystemDefinition!.Name,
             FileCount = x.Files.Count,
             DuplicateCount = x.Files.Count(f => f.Status == FileStatus.Duplicate),
+            VerifiedCount = x.Files.Count(f => f.CatalogStatus == CatalogVerificationStatus.Verified),
             MissingCount = x.Files.Count(f => f.Status == FileStatus.Missing)
         }).ToListAsync(ct);
-        return rows.Select(x => new GameSummary(x.Id, x.Title, x.System, x.FileCount, x.DuplicateCount,
+        return rows.Select(x => new GameSummary(x.Id, x.Title, x.System, x.FileCount, x.DuplicateCount, x.VerifiedCount,
             x.MissingCount > 0 ? FileStatus.Missing : x.DuplicateCount > 0 ? FileStatus.Duplicate : FileStatus.Normal)).ToList();
     }
 
@@ -175,10 +244,177 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
     { await using var db = await factory.CreateDbContextAsync(ct); return await db.Games.AsNoTracking().Include(x => x.SystemDefinition).Include(x => x.Files).ThenInclude(x => x.SystemFormat).SingleOrDefaultAsync(x => x.Id == id, ct); }
 
     public async Task<LibraryCounts> GetCountsAsync(CancellationToken ct)
-    { await using var db = await factory.CreateDbContextAsync(ct); return new(await db.Games.LongCountAsync(ct), await db.GameFiles.LongCountAsync(ct), await db.GameFiles.LongCountAsync(x => x.Status == FileStatus.Duplicate, ct), await db.GameFiles.LongCountAsync(x => x.Status == FileStatus.Missing, ct)); }
+    { await using var db = await factory.CreateDbContextAsync(ct); return new(await db.Games.LongCountAsync(ct), await db.GameFiles.LongCountAsync(ct), await db.GameFiles.LongCountAsync(x => x.Status == FileStatus.Duplicate, ct), await db.GameFiles.LongCountAsync(x => x.Status == FileStatus.Missing, ct), await db.GameFiles.LongCountAsync(x => x.CatalogStatus == CatalogVerificationStatus.Verified, ct)); }
+
+    public async Task<IReadOnlyList<LibraryExportRow>> GetLibraryExportRowsAsync(CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        return await db.GameFiles.AsNoTracking()
+            .OrderBy(x => x.Game!.SystemDefinition!.Name).ThenBy(x => x.Game!.SortTitle).ThenBy(x => x.FileName)
+            .Select(x => new LibraryExportRow(
+                x.Game == null ? "" : x.Game.SystemDefinition!.Name,
+                x.Game == null ? "" : x.Game.CanonicalTitle,
+                x.FileName,
+                x.FullPath,
+                x.ScanLocation!.Path,
+                x.SystemFormat == null ? "" : x.SystemFormat.FormatName,
+                x.Size,
+                x.ModifiedDate,
+                x.Region,
+                x.Language,
+                x.Revision,
+                x.Version,
+                x.Status,
+                x.CatalogStatus,
+                x.CatalogSource,
+                x.CatalogName,
+                x.IsPreferred,
+                x.IsManuallyPreferred,
+                x.IsExcluded,
+                x.PreferenceScore,
+                x.QuickHash,
+                x.Hashes.Where(h => h.Algorithm == "SHA256").Select(h => h.Hash).FirstOrDefault(),
+                x.Hashes.Where(h => h.Algorithm == "SHA1").Select(h => h.Hash).FirstOrDefault())).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<VerificationCandidate>> GetVerificationCandidatesAsync(string? systemKey, CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var query = db.GameFiles.AsNoTracking().Where(x => x.Game != null && x.Status != FileStatus.Missing);
+        if (!string.IsNullOrWhiteSpace(systemKey)) query = query.Where(x => x.Game!.SystemDefinition!.Key == systemKey);
+        return await query.OrderBy(x => x.Game!.SystemDefinition!.Key).ThenBy(x => x.GameId).ThenBy(x => x.FullPath)
+            .Select(x => new VerificationCandidate(x.Id, x.GameId!.Value, x.Game!.SystemDefinition!.Key, x.FullPath, x.FileName, x.Extension, x.Size, x.Status, x.Region, x.Revision))
+            .ToListAsync(ct);
+    }
+
+    public async Task ApplyCatalogVerificationAsync(IReadOnlyList<CatalogVerificationUpdate> updates, CancellationToken ct)
+    {
+        if (updates.Count == 0) return;
+        foreach (var batch in updates.Chunk(250))
+        {
+            await using var db = await factory.CreateDbContextAsync(ct);
+            var ids = batch.Select(x => x.FileId).ToArray();
+            var files = await db.GameFiles.Where(x => ids.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+            var hashRows = await db.Hashes.Where(x => ids.Contains(x.GameFileId) && (x.Algorithm == "SHA1" || x.Algorithm == "CRC32")).ToListAsync(ct);
+            var hashes = hashRows.GroupBy(x => (x.GameFileId, x.Algorithm)).ToDictionary(x => x.Key, x => x.First());
+            var verifiedAt = DateTimeOffset.UtcNow;
+            foreach (var update in batch)
+            {
+                if (!files.TryGetValue(update.FileId, out var file)) continue;
+                file.CatalogStatus = update.Status;
+                file.CatalogSource = update.Source;
+                file.CatalogName = update.CatalogName;
+                file.CatalogVerifiedAt = verifiedAt;
+                SaveHash("SHA1", update.Sha1);
+                SaveHash("CRC32", update.Crc32);
+
+                void SaveHash(string algorithm, string? value)
+                {
+                    if (string.IsNullOrWhiteSpace(value)) return;
+                    if (hashes.TryGetValue((file.Id, algorithm), out var existing))
+                    {
+                        existing.Hash = value;
+                        existing.CalculatedDate = verifiedAt;
+                    }
+                    else
+                    {
+                        var item = new FileHash { GameFileId = file.Id, Algorithm = algorithm, Hash = value, CalculatedDate = verifiedAt };
+                        db.Hashes.Add(item);
+                        hashes[(file.Id, algorithm)] = item;
+                    }
+                }
+            }
+            await db.SaveChangesAsync(ct);
+        }
+    }
+
+    public async Task RecalculatePreferredCopiesAsync(string? systemKey, CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var query = db.GameFiles.Where(x => x.GameId != null);
+        if (!string.IsNullOrWhiteSpace(systemKey)) query = query.Where(x => x.Game!.SystemDefinition!.Key == systemKey);
+        var files = await query.ToListAsync(ct);
+        foreach (var group in files.GroupBy(x => x.GameId))
+            ApplyPreferredSelection(group);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task SetCopyPreferenceAsync(long fileId, bool manuallyPreferred, bool excluded, CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var file = await db.GameFiles.SingleOrDefaultAsync(x => x.Id == fileId, ct);
+        if (file is null) return;
+        var gameId = file.GameId;
+        if (manuallyPreferred && file.GameId.HasValue)
+        {
+            await db.GameFiles.Where(x => x.GameId == file.GameId && x.Id != file.Id)
+                .ExecuteUpdateAsync(x => x.SetProperty(y => y.IsManuallyPreferred, false).SetProperty(y => y.IsPreferred, false), ct);
+        }
+        file.IsManuallyPreferred = manuallyPreferred;
+        file.IsExcluded = excluded;
+        if (excluded) { file.IsManuallyPreferred = false; file.IsPreferred = false; }
+        await db.SaveChangesAsync(ct);
+        if (!gameId.HasValue) return;
+        var copies = await db.GameFiles.Where(x => x.GameId == gameId).ToListAsync(ct);
+        ApplyPreferredSelection(copies);
+        await db.SaveChangesAsync(ct);
+    }
 
     public async Task<IReadOnlyList<SystemDefinition>> GetSystemsAsync(CancellationToken ct)
     { await using var db = await factory.CreateDbContextAsync(ct); return await db.Systems.AsNoTracking().OrderBy(x => x.Name).ToListAsync(ct); }
+
+    private async Task EnsureGameCacheAsync(CancellationToken ct)
+    {
+        if (gamesByKey is not null) return;
+        await gameCacheGate.WaitAsync(ct);
+        try
+        {
+            if (gamesByKey is not null) return;
+            await using var db = await factory.CreateDbContextAsync(ct);
+            var databaseSystemToSource = sourceSystemDatabaseIds.ToDictionary(x => x.Value, x => x.Key);
+            var games = await db.Games.AsNoTracking().ToListAsync(ct);
+            gamesByKey = games.Where(x => databaseSystemToSource.ContainsKey(x.SystemDefinitionId))
+                .ToDictionary(x => (databaseSystemToSource[x.SystemDefinitionId], x.NormalizedTitle));
+        }
+        finally { gameCacheGate.Release(); }
+    }
+
+    private static void AddParameter(DbCommand command, string name, object value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
+    }
+
+    private static int ScorePreference(GameFile file)
+    {
+        if (file.IsExcluded || file.Status == FileStatus.Missing) return -10000;
+        var score = file.IsManuallyPreferred ? 5000 : file.CatalogStatus == CatalogVerificationStatus.Verified ? 1000 : 0;
+        var name = file.CatalogName ?? file.FileName;
+        if (ContainsAny(name, "(USA)", "(World)")) score += 120;
+        else if (name.Contains("(Europe)", StringComparison.OrdinalIgnoreCase)) score += 80;
+        else if (name.Contains("(Japan)", StringComparison.OrdinalIgnoreCase)) score += 40;
+        if (!string.IsNullOrWhiteSpace(file.Revision)) score += 10;
+        if (ContainsAny(name, "(Beta", "(Proto", "(Demo", "(Sample", "[b", "(Pirate", "(Hack")) score -= 300;
+        if (file.Status == FileStatus.Corrupt) score -= 1000;
+        if (file.Extension.Equals(".zip", StringComparison.OrdinalIgnoreCase)) score += 5;
+        return score;
+    }
+
+    private static void ApplyPreferredSelection(IEnumerable<GameFile> gameFiles)
+    {
+        var files = gameFiles.ToArray();
+        foreach (var file in files) { file.PreferenceScore = ScorePreference(file); file.IsPreferred = false; }
+        var units = files.GroupBy(x => x.FileGroupId.HasValue ? $"G{x.FileGroupId.Value}" : $"F{x.Id}")
+            .Where(x => x.All(f => !f.IsExcluded && f.Status != FileStatus.Missing))
+            .Select(x => new { Files = x.ToArray(), Score = x.Max(f => f.PreferenceScore), Path = x.Select(f => f.FullPath).OrderBy(p => p, StringComparer.OrdinalIgnoreCase).First() })
+            .OrderByDescending(x => x.Score).ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+        if (units is null) return;
+        foreach (var file in units.Files) file.IsPreferred = true;
+    }
+
+    private static bool ContainsAny(string value, params string[] terms) => terms.Any(x => value.Contains(x, StringComparison.OrdinalIgnoreCase));
 
     private static string CreateSortTitle(string title) => title.StartsWith("The ", StringComparison.OrdinalIgnoreCase) ? $"{title[4..]}, The" : title;
 }
