@@ -51,6 +51,8 @@ public interface ILibraryRepository
     Task ApplyCatalogVerificationAsync(IReadOnlyList<CatalogVerificationUpdate> updates, CancellationToken cancellationToken);
     Task RecalculatePreferredCopiesAsync(string? systemKey, CancellationToken cancellationToken);
     Task SetCopyPreferenceAsync(long fileId, bool manuallyPreferred, bool excluded, CancellationToken cancellationToken);
+    Task<IReadOnlyList<FuzzyMatchCandidate>> GetFuzzyMatchCandidatesAsync(CancellationToken cancellationToken);
+    Task MergeGamesAsync(long keepGameId, long mergeGameId, CancellationToken cancellationToken);
     Task<IReadOnlyList<SystemDefinition>> GetSystemsAsync(CancellationToken cancellationToken);
 }
 

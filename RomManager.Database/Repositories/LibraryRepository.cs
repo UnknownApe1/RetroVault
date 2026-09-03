@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using RomManager.Core.Grouping;
 using RomManager.Core.Models;
 using RomManager.Core.Services;
 using RomManager.Database.SQLite;
@@ -358,6 +359,45 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
         var copies = await db.GameFiles.Where(x => x.GameId == gameId).ToListAsync(ct);
         ApplyPreferredSelection(copies);
         await db.SaveChangesAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<FuzzyMatchCandidate>> GetFuzzyMatchCandidatesAsync(CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var games = await db.Games.AsNoTracking().Select(x => new
+        {
+            x.Id,
+            x.CanonicalTitle,
+            x.NormalizedTitle,
+            x.SystemDefinitionId,
+            SystemName = x.SystemDefinition!.Name,
+            FileCount = x.Files.Count(f => f.Status != FileStatus.Missing)
+        }).ToListAsync(ct);
+        var results = new List<FuzzyMatchCandidate>();
+        foreach (var system in games.GroupBy(x => x.SystemDefinitionId))
+        {
+            var byId = system.ToDictionary(x => x.Id);
+            var snapshots = system.Select(x => (x.Id, x.NormalizedTitle)).ToArray();
+            foreach (var (aId, bId, similarity) in FuzzyTitleMatcher.FindSimilarPairs(snapshots))
+            {
+                var a = byId[aId]; var b = byId[bId];
+                results.Add(new FuzzyMatchCandidate(a.Id, a.CanonicalTitle, b.Id, b.CanonicalTitle, a.SystemName, a.FileCount, b.FileCount, similarity));
+            }
+        }
+        return results.OrderByDescending(x => x.Similarity).Take(300).ToList();
+    }
+
+    public async Task MergeGamesAsync(long keepGameId, long mergeGameId, CancellationToken ct)
+    {
+        if (keepGameId == mergeGameId) return;
+        await using var db = await factory.CreateDbContextAsync(ct);
+        await db.GameFiles.Where(x => x.GameId == mergeGameId).ExecuteUpdateAsync(s => s.SetProperty(x => x.GameId, keepGameId), ct);
+        await db.FileGroups.Where(x => x.GameId == mergeGameId).ExecuteUpdateAsync(s => s.SetProperty(x => x.GameId, keepGameId), ct);
+        await db.Games.Where(x => x.Id == mergeGameId).ExecuteDeleteAsync(ct);
+        var files = await db.GameFiles.Where(x => x.GameId == keepGameId).ToListAsync(ct);
+        ApplyPreferredSelection(files);
+        await db.SaveChangesAsync(ct);
+        gamesByKey = null;
     }
 
     public async Task<IReadOnlyList<SystemDefinition>> GetSystemsAsync(CancellationToken ct)

@@ -28,11 +28,13 @@ A Windows 10/11 desktop application that safely indexes ROM and game files witho
 - Search by game title, physical filename, or path; filter by system
 - High-contrast Midnight Teal interface with explicit readable text colors and independently scrollable system navigation
 - Visible application version in both the title bar and header so installed builds are easy to identify
+- Fully retemplated buttons and dropdowns so disabled/expanded states stay legible, instead of the default WPF chrome silently overriding the dark theme
 - Game/file details, open containing folder, copy path, and verify SHA-256
 - Full UTF-8 CSV inventory export with source folder, physical path, parsed metadata, status, quick hash, and SHA-256
 - Exact online-catalog verification against Libretro's maintained No-Intro and Redump DAT mirrors, cached locally for seven days
-- SHA-1 plus CRC32 matching for regular files and ROM contents inside ZIP archives; filenames alone never produce a verified result
+- SHA-1 plus CRC32 matching for regular files and ROM contents inside ZIP/7z/RAR archives; filenames alone never produce a verified result
 - Conservative preferred-copy recommendations that prioritize verified, available USA/World releases and avoid beta/prototype/demo/bad-dump/hack labels
+- Likely-duplicate title review: a bucketed Levenshtein scan (with an explicit guard against numbered-sequel false positives) surfaces near-identical titles across the whole library for a human to merge or dismiss — nothing is merged automatically
 - Rotating session logs under `%LOCALAPPDATA%\CozziForged\RomManager\Logs` (2 MiB per file, 20 files maximum, 14-day retention)
 - Optional `--verbose-scan` diagnostics for per-file unchanged and unsupported skip reasons
 - xUnit coverage for parsing, grouping, hashing, enumeration, and ambiguous format hints
@@ -94,6 +96,7 @@ Starting with v1.4.0, place the patch that matches your installed version in `C:
 5. Use **Verify SHA-256** for an explicit full-file verification. Likely duplicates are automatically fully verified when quick hashes collide.
 6. Use **Export CSV** to create a portable inventory of every indexed physical copy and its source folder.
 7. Select a system and use **Verify Catalog** to download/cache its checksum DAT and verify each copy. Selecting **All systems** is supported but may take hours because complete hashes require reading every ROM.
+8. Use **Review Duplicate Titles** to scan the whole library for likely-duplicate game titles (typos, alternate spellings, punctuation differences) and choose which copy to keep for each pair. Nothing merges until you pick a side.
 
 Configured locations are reconciled when **Scan Now** is selected. Unchanged files avoid parsing and hashing. Files that disappear are marked `Missing`; reconnecting and rescanning restores them.
 
@@ -107,7 +110,7 @@ For detailed scanner diagnostics, launch `RomManager.exe --verbose-scan`. Normal
 - **Catalog verification is exact.** `Verified` means the file bytes—or a ROM contained inside a ZIP—matched a published SHA-1 or size/CRC32 catalog record. `NoMatch` does not automatically mean bad; headered, transformed, encrypted, or compressed disc formats may not match the catalog's canonical representation.
 - **Preferred is a recommendation, not a deletion decision.** It can be changed by later review tools, and v1.5 never moves, renames, or deletes ROMs.
 - **Catalog provenance.** Automatic DAT downloads come from the CC BY-SA 4.0 [Libretro Database](https://github.com/libretro/libretro-database), which imports upstream No-Intro and Redump data and identifies source precedence in its repository documentation.
-- **Uncertain filename similarity is not auto-merged.** Milestone 1 groups deterministic normalized titles within one system. A future review screen can offer fuzzy matches.
+- **Uncertain filename similarity is not auto-merged.** Scanning groups deterministic normalized titles within one system; the **Review Duplicate Titles** screen surfaces likely fuzzy matches for a human to merge or dismiss, one pair at a time.
 - **Ambiguous extensions use path hints and catalog priority.** The JSON catalog makes this replaceable by header-specific detectors without rewriting the scanner.
 - **Database history is retained.** Missing records are not deleted during reconciliation.
 - **Scanning favors correctness.** Unchanged database updates are batched, while HDD file reads remain ordered to avoid turning a sequential scan into random disk contention.

@@ -45,6 +45,7 @@ public sealed class MainViewModel : ObservableObject
         VerifyHashCommand = new AsyncCommand(VerifyHashAsync, () => SelectedFile is not null && !IsScanning);
         ExportCsvCommand = new AsyncCommand(ExportLibraryCsvAsync, () => !IsScanning);
         VerifyCatalogCommand = new AsyncCommand(VerifyCatalogAsync, () => !IsScanning);
+        ReviewDuplicateTitlesCommand = new AsyncCommand(ReviewDuplicateTitlesAsync, () => !IsScanning);
         PreferCopyCommand = new AsyncCommand(TogglePreferredCopyAsync, () => SelectedFile is not null && !IsScanning);
         ExcludeCopyCommand = new AsyncCommand(ToggleExcludedCopyAsync, () => SelectedFile is not null && !IsScanning);
     }
@@ -75,6 +76,7 @@ public sealed class MainViewModel : ObservableObject
     public AsyncCommand VerifyHashCommand { get; }
     public AsyncCommand ExportCsvCommand { get; }
     public AsyncCommand VerifyCatalogCommand { get; }
+    public AsyncCommand ReviewDuplicateTitlesCommand { get; }
     public AsyncCommand PreferCopyCommand { get; }
     public AsyncCommand ExcludeCopyCommand { get; }
     public string VersionText { get; } = GetVersionText();
@@ -88,7 +90,7 @@ public sealed class MainViewModel : ObservableObject
     public string SearchText { get => searchText; set { if (Set(ref searchText, value) && isInitialized) _ = RefreshLibraryAsync(250); } }
     public string StatusText { get => statusText; private set => Set(ref statusText, value); }
     public string CurrentPath { get => currentPath; private set => Set(ref currentPath, value); }
-    public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); ExportCsvCommand.Refresh(); VerifyCatalogCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); } } }
+    public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); ExportCsvCommand.Refresh(); VerifyCatalogCommand.Refresh(); ReviewDuplicateTitlesCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); } } }
     public LibraryCounts Counts { get => counts; private set => Set(ref counts, value); }
     public SystemDefinition? SelectedSystem { get => selectedSystem; set { if (Set(ref selectedSystem, value) && isInitialized) _ = RefreshLibraryAsync(); } }
     public LibraryFilterOption? SelectedFilter { get => selectedFilter; set { if (Set(ref selectedFilter, value) && isInitialized) _ = RefreshLibraryAsync(); } }
@@ -222,6 +224,20 @@ public sealed class MainViewModel : ObservableObject
             await RefreshLibraryAsync();
             if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
         }
+    }
+    private async Task ReviewDuplicateTitlesAsync()
+    {
+        StatusText = "Scanning titles for likely duplicates...";
+        try
+        {
+            var candidates = await Task.Run(() => repository.GetFuzzyMatchCandidatesAsync(CancellationToken.None));
+            var window = new DuplicateReviewWindow { Owner = Application.Current.MainWindow, DataContext = new DuplicateReviewViewModel(repository, candidates) };
+            window.ShowDialog();
+            StatusText = "Ready";
+            await RefreshLibraryAsync();
+            if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
+        }
+        catch (Exception ex) { logger.LogError(ex, "Could not scan for similar titles"); StatusText = $"Similar-title scan failed: {ex.Message}"; }
     }
     private async Task TogglePreferredCopyAsync()
     {

@@ -9,6 +9,7 @@
     <Border Grid.Row="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="18,10">
       <DockPanel LastChildFill="True">
         <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+          <Button Content="Review Duplicate Titles" Command="{Binding ReviewDuplicateTitlesCommand}" ToolTip="Find likely-duplicate game titles across the whole library for manual review and merge"/>
           <Button Content="Verify Catalog" Command="{Binding VerifyCatalogCommand}" ToolTip="Verify the selected system against trusted checksum catalogs"/>
           <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" ToolTip="Export every indexed copy with its source, status, and hashes"/>
           <Button Content="Add Folder" Command="{Binding AddFolderCommand}"/>

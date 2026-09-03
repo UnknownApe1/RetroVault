@@ -174,6 +174,30 @@ public sealed class LibraryRepositoryTests : IDisposable
         Assert.Equal("NES", usaRow.System);
     }
 
+    [Fact]
+    public async Task MergeGamesAsync_ReassignsFilesAndRemovesTheMergedGame()
+    {
+        await using var db = CreateContext();
+        var system = new SystemDefinition { Key = "NES", Name = "NES", Manufacturer = "Nintendo" };
+        db.Systems.Add(system);
+        var location = new ScanLocation { Path = "C:\\ROMs" };
+        db.ScanLocations.Add(location);
+        await db.SaveChangesAsync();
+        var keep = new Game { CanonicalTitle = "Sonic the Hedgehog", SortTitle = "Sonic the Hedgehog", NormalizedTitle = "sonicthehedgehog", SystemDefinitionId = system.Id };
+        var duplicate = new Game { CanonicalTitle = "Sonik the Hedgehog", SortTitle = "Sonik the Hedgehog", NormalizedTitle = "sonikthehedgehog", SystemDefinitionId = system.Id };
+        db.Games.AddRange(keep, duplicate);
+        await db.SaveChangesAsync();
+        var duplicateFile = new GameFile { GameId = duplicate.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\Sonik.nes", FileName = "Sonik.nes", Extension = ".nes", Status = FileStatus.Normal };
+        db.GameFiles.Add(duplicateFile);
+        await db.SaveChangesAsync();
+
+        await repository.MergeGamesAsync(keep.Id, duplicate.Id, CancellationToken.None);
+
+        await using var verify = CreateContext();
+        Assert.Equal(keep.Id, (await verify.GameFiles.SingleAsync(x => x.Id == duplicateFile.Id)).GameId);
+        Assert.False(await verify.Games.AnyAsync(x => x.Id == duplicate.Id));
+    }
+
     private sealed class TestDbContextFactory(DbContextOptions<RomManagerDbContext> options) : IDbContextFactory<RomManagerDbContext>
     {
         public RomManagerDbContext CreateDbContext() => new(options);
