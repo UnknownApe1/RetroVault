@@ -64,13 +64,19 @@
       </Border>
 
       <Grid Grid.Column="1" Margin="16">
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
         <Grid Grid.Row="0">
           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="180"/></Grid.ColumnDefinitions>
           <TextBox Grid.Column="0" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" FontSize="15" ToolTip="Search title, filename, or path"/>
           <ComboBox Grid.Column="1" Margin="9,0,0,0" ItemsSource="{Binding LibraryFilters}" SelectedItem="{Binding SelectedFilter}" DisplayMemberPath="Name" ToolTip="Filter the visible library"/>
         </Grid>
-        <ListView Grid.Row="1" Margin="3,11,3,0" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}"
+        <DockPanel Grid.Row="1" Margin="3,9,3,0" LastChildFill="False">
+          <TextBlock Text="{Binding SelectedGamesCountText}" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" Margin="4,0,10,0"/>
+          <Button Content="Exclude Non-Preferred Copies" Command="{Binding ExcludeNonPreferredCommand}" ToolTip="For the selected games, keep only each game's preferred copy and exclude the rest"/>
+          <Button Content="Clear Overrides" Command="{Binding ClearOverridesCommand}" ToolTip="Reset manual preferred/excluded choices back to automatic for the selected games"/>
+        </DockPanel>
+        <ListView x:Name="GamesListView" Grid.Row="2" Margin="3,11,3,0" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}"
+                  SelectionMode="Extended" SelectionChanged="GamesListView_SelectionChanged"
                   VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                   ScrollViewer.IsDeferredScrollingEnabled="True">
           <ListView.View><GridView>
@@ -87,6 +93,9 @@
         <Grid>
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <StackPanel>
+            <Border Width="180" Height="168" Background="{StaticResource RaisedBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="5" Margin="0,0,0,12" HorizontalAlignment="Left">
+              <Image Source="{Binding ThumbnailPath}" Stretch="Uniform" Margin="4"/>
+            </Border>
             <TextBlock Text="{Binding GameDetails.CanonicalTitle, FallbackValue=Select a game}" FontSize="22" FontWeight="SemiBold"
                        Foreground="{StaticResource TextBrush}" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding GameDetails.SystemDefinition.Name}" Foreground="{StaticResource AccentBrush}" FontSize="14" FontWeight="SemiBold" Margin="0,4,0,16"/>

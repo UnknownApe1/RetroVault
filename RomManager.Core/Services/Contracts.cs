@@ -19,6 +19,10 @@ public interface ICatalogVerificationService
 {
     Task<CatalogVerificationResult> VerifyAsync(string? systemKey, IProgress<CatalogVerificationProgress>? progress, CancellationToken cancellationToken);
 }
+public interface IThumbnailService
+{
+    Task<string?> GetThumbnailPathAsync(string systemKey, string gameTitle, CancellationToken cancellationToken);
+}
 public interface IFormatIdentifier { IdentificationResult Identify(FileCandidate file); bool IsCandidate(string extension); }
 public interface IArchiveInspector { Task<IdentificationResult?> IdentifyContentsAsync(FileCandidate archive, CancellationToken cancellationToken); }
 
@@ -51,6 +55,8 @@ public interface ILibraryRepository
     Task ApplyCatalogVerificationAsync(IReadOnlyList<CatalogVerificationUpdate> updates, CancellationToken cancellationToken);
     Task RecalculatePreferredCopiesAsync(string? systemKey, CancellationToken cancellationToken);
     Task SetCopyPreferenceAsync(long fileId, bool manuallyPreferred, bool excluded, CancellationToken cancellationToken);
+    Task ExcludeNonPreferredCopiesAsync(IReadOnlyList<long> gameIds, CancellationToken cancellationToken);
+    Task ClearCopyOverridesAsync(IReadOnlyList<long> gameIds, CancellationToken cancellationToken);
     Task<IReadOnlyList<FuzzyMatchCandidate>> GetFuzzyMatchCandidatesAsync(CancellationToken cancellationToken);
     Task MergeGamesAsync(long keepGameId, long mergeGameId, CancellationToken cancellationToken);
     Task<IReadOnlyList<SystemDefinition>> GetSystemsAsync(CancellationToken cancellationToken);

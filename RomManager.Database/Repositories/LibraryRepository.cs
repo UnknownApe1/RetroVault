@@ -361,6 +361,35 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
         await db.SaveChangesAsync(ct);
     }
 
+    public async Task ExcludeNonPreferredCopiesAsync(IReadOnlyList<long> gameIds, CancellationToken ct)
+    {
+        if (gameIds.Count == 0) return;
+        foreach (var batch in gameIds.Chunk(200))
+        {
+            await using var db = await factory.CreateDbContextAsync(ct);
+            var files = await db.GameFiles.Where(x => x.GameId != null && batch.Contains(x.GameId!.Value) && x.Status != FileStatus.Missing).ToListAsync(ct);
+            foreach (var group in files.GroupBy(x => x.GameId))
+            {
+                foreach (var file in group.Where(x => !x.IsPreferred && !x.IsExcluded)) file.IsExcluded = true;
+                ApplyPreferredSelection(group);
+            }
+            await db.SaveChangesAsync(ct);
+        }
+    }
+
+    public async Task ClearCopyOverridesAsync(IReadOnlyList<long> gameIds, CancellationToken ct)
+    {
+        if (gameIds.Count == 0) return;
+        foreach (var batch in gameIds.Chunk(200))
+        {
+            await using var db = await factory.CreateDbContextAsync(ct);
+            var files = await db.GameFiles.Where(x => x.GameId != null && batch.Contains(x.GameId!.Value)).ToListAsync(ct);
+            foreach (var file in files) { file.IsManuallyPreferred = false; file.IsExcluded = false; }
+            foreach (var group in files.GroupBy(x => x.GameId)) ApplyPreferredSelection(group);
+            await db.SaveChangesAsync(ct);
+        }
+    }
+
     public async Task<IReadOnlyList<FuzzyMatchCandidate>> GetFuzzyMatchCandidatesAsync(CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);

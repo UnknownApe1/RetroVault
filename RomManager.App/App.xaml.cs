@@ -60,6 +60,7 @@ public partial class App : Application
             services.AddSingleton<ILibraryRepository, LibraryRepository>();
             services.AddSingleton<ILibraryScanner, LibraryScanner>();
             services.AddSingleton<ICatalogVerificationService, LibretroCatalogVerificationService>();
+            services.AddSingleton<IThumbnailService, LibretroThumbnailService>();
             services.AddSingleton<MainViewModel>();
             services.AddSingleton<MainWindow>();
         }).ConfigureLogging((_, logging) =>

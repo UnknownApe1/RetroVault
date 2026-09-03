@@ -17,9 +17,11 @@ public sealed class MainViewModel : ObservableObject
     private readonly ILibraryScanner scanner;
     private readonly IHashService hashes;
     private readonly ICatalogVerificationService catalogVerification;
+    private readonly IThumbnailService thumbnails;
     private readonly ILogger<MainViewModel> logger;
     private CancellationTokenSource? scanCancellation;
     private CancellationTokenSource? refreshCancellation;
+    private CancellationTokenSource? thumbnailCancellation;
     private string searchText = "", statusText = "Ready", currentPath = "";
     private bool isScanning, isInitialized;
     private SystemDefinition? selectedSystem;
@@ -29,10 +31,11 @@ public sealed class MainViewModel : ObservableObject
     private ScanLocation? selectedLocation;
     private Game? gameDetails;
     private LibraryCounts counts = new(0, 0, 0, 0);
+    private string? thumbnailPath;
 
-    public MainViewModel(ILibraryRepository repository, ILibraryScanner scanner, IHashService hashes, ICatalogVerificationService catalogVerification, ILogger<MainViewModel> logger)
+    public MainViewModel(ILibraryRepository repository, ILibraryScanner scanner, IHashService hashes, ICatalogVerificationService catalogVerification, IThumbnailService thumbnails, ILogger<MainViewModel> logger)
     {
-        this.repository = repository; this.scanner = scanner; this.hashes = hashes; this.catalogVerification = catalogVerification; this.logger = logger;
+        this.repository = repository; this.scanner = scanner; this.hashes = hashes; this.catalogVerification = catalogVerification; this.thumbnails = thumbnails; this.logger = logger;
         ScanCommand = new AsyncCommand(ScanAsync, () => !IsScanning);
         CancelCommand = new RelayCommand(() => scanCancellation?.Cancel(), () => IsScanning);
         AddFolderCommand = new AsyncCommand(AddFolderAsync, () => !IsScanning);
@@ -48,6 +51,9 @@ public sealed class MainViewModel : ObservableObject
         ReviewDuplicateTitlesCommand = new AsyncCommand(ReviewDuplicateTitlesAsync, () => !IsScanning);
         PreferCopyCommand = new AsyncCommand(TogglePreferredCopyAsync, () => SelectedFile is not null && !IsScanning);
         ExcludeCopyCommand = new AsyncCommand(ToggleExcludedCopyAsync, () => SelectedFile is not null && !IsScanning);
+        ExcludeNonPreferredCommand = new AsyncCommand(ExcludeNonPreferredAsync, () => SelectedGames.Count > 0 && !IsScanning);
+        ClearOverridesCommand = new AsyncCommand(ClearOverridesAsync, () => SelectedGames.Count > 0 && !IsScanning);
+        SelectedGames.CollectionChanged += (_, _) => { ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); Raise(nameof(SelectedGamesCountText)); };
     }
 
     public BulkObservableCollection<GameSummary> Games { get; } = [];
@@ -62,6 +68,7 @@ public sealed class MainViewModel : ObservableObject
         new(LibraryViewFilter.NeedsReview, "Needs review"),
         new(LibraryViewFilter.PreferredCopies, "Preferred copies")
     ];
+    public ObservableCollection<GameSummary> SelectedGames { get; } = [];
     public ObservableCollection<SystemDefinition> Systems { get; } = [];
     public ObservableCollection<ScanLocation> ScanLocations { get; } = [];
     public AsyncCommand ScanCommand { get; }
@@ -79,18 +86,22 @@ public sealed class MainViewModel : ObservableObject
     public AsyncCommand ReviewDuplicateTitlesCommand { get; }
     public AsyncCommand PreferCopyCommand { get; }
     public AsyncCommand ExcludeCopyCommand { get; }
+    public AsyncCommand ExcludeNonPreferredCommand { get; }
+    public AsyncCommand ClearOverridesCommand { get; }
     public string VersionText { get; } = GetVersionText();
     public string WindowTitle => $"ROM Manager {VersionText}";
     public ScanLocation? SelectedLocation { get => selectedLocation; set { if (Set(ref selectedLocation, value)) { RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); Raise(nameof(LocationToggleLabel)); Raise(nameof(RecursiveToggleLabel)); } } }
     public string LocationToggleLabel => SelectedLocation?.Enabled == true ? "Disable" : "Enable";
     public string RecursiveToggleLabel => SelectedLocation?.Recursive == true ? "Recursive: On" : "Recursive: Off";
-    public GameFile? SelectedFile { get => selectedFile; set { if (Set(ref selectedFile, value)) { OpenFolderCommand.Refresh(); CopyPathCommand.Refresh(); VerifyHashCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); Raise(nameof(PreferCopyLabel)); Raise(nameof(ExcludeCopyLabel)); } } }
+    public GameFile? SelectedFile { get => selectedFile; set { if (Set(ref selectedFile, value)) { OpenFolderCommand.Refresh(); CopyPathCommand.Refresh(); VerifyHashCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); Raise(nameof(PreferCopyLabel)); Raise(nameof(ExcludeCopyLabel)); _ = LoadThumbnailAsync(); } } }
     public string PreferCopyLabel => SelectedFile?.IsManuallyPreferred == true ? "Use Automatic Choice" : "Use This Copy";
     public string ExcludeCopyLabel => SelectedFile?.IsExcluded == true ? "Include Copy" : "Exclude Copy";
+    public string? ThumbnailPath { get => thumbnailPath; private set => Set(ref thumbnailPath, value); }
+    public string SelectedGamesCountText => SelectedGames.Count == 0 ? "" : $"{SelectedGames.Count:N0} selected";
     public string SearchText { get => searchText; set { if (Set(ref searchText, value) && isInitialized) _ = RefreshLibraryAsync(250); } }
     public string StatusText { get => statusText; private set => Set(ref statusText, value); }
     public string CurrentPath { get => currentPath; private set => Set(ref currentPath, value); }
-    public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); ExportCsvCommand.Refresh(); VerifyCatalogCommand.Refresh(); ReviewDuplicateTitlesCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); } } }
+    public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); ExportCsvCommand.Refresh(); VerifyCatalogCommand.Refresh(); ReviewDuplicateTitlesCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); } } }
     public LibraryCounts Counts { get => counts; private set => Set(ref counts, value); }
     public SystemDefinition? SelectedSystem { get => selectedSystem; set { if (Set(ref selectedSystem, value) && isInitialized) _ = RefreshLibraryAsync(); } }
     public LibraryFilterOption? SelectedFilter { get => selectedFilter; set { if (Set(ref selectedFilter, value) && isInitialized) _ = RefreshLibraryAsync(); } }
@@ -238,6 +249,53 @@ public sealed class MainViewModel : ObservableObject
             if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
         }
         catch (Exception ex) { logger.LogError(ex, "Could not scan for similar titles"); StatusText = $"Similar-title scan failed: {ex.Message}"; }
+    }
+    private async Task LoadThumbnailAsync()
+    {
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref thumbnailCancellation, cancellation);
+        previous?.Cancel();
+        previous?.Dispose();
+        var token = cancellation.Token;
+        var file = SelectedFile;
+        var systemKey = GameDetails?.SystemDefinition?.Key;
+        var title = file?.CatalogName ?? GameDetails?.CanonicalTitle;
+        if (file is null || systemKey is null || title is null) { ThumbnailPath = null; return; }
+        try
+        {
+            var path = await thumbnails.GetThumbnailPathAsync(systemKey, title, token);
+            if (!token.IsCancellationRequested) ThumbnailPath = path;
+        }
+        catch (OperationCanceledException) { }
+        finally { if (ReferenceEquals(Interlocked.CompareExchange(ref thumbnailCancellation, null, cancellation), cancellation)) cancellation.Dispose(); }
+    }
+    private async Task ExcludeNonPreferredAsync()
+    {
+        var ids = SelectedGames.Select(x => x.Id).ToArray();
+        if (ids.Length == 0) return;
+        StatusText = $"Excluding non-preferred copies for {ids.Length:N0} selected game(s)...";
+        try
+        {
+            await repository.ExcludeNonPreferredCopiesAsync(ids, CancellationToken.None);
+            StatusText = $"Excluded non-preferred copies for {ids.Length:N0} game(s)";
+            await RefreshLibraryAsync();
+            if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
+        }
+        catch (Exception ex) { logger.LogError(ex, "Could not exclude non-preferred copies"); StatusText = $"Bulk exclude failed: {ex.Message}"; }
+    }
+    private async Task ClearOverridesAsync()
+    {
+        var ids = SelectedGames.Select(x => x.Id).ToArray();
+        if (ids.Length == 0) return;
+        StatusText = $"Clearing overrides for {ids.Length:N0} selected game(s)...";
+        try
+        {
+            await repository.ClearCopyOverridesAsync(ids, CancellationToken.None);
+            StatusText = $"Cleared overrides for {ids.Length:N0} game(s)";
+            await RefreshLibraryAsync();
+            if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
+        }
+        catch (Exception ex) { logger.LogError(ex, "Could not clear copy overrides"); StatusText = $"Bulk clear failed: {ex.Message}"; }
     }
     private async Task TogglePreferredCopyAsync()
     {

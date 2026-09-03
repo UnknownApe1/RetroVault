@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
 using RomManager.App.ViewModels;
+using RomManager.Core.Models;
 
 namespace RomManager.App;
 
@@ -17,5 +19,12 @@ public partial class MainWindow : Window
             viewModel.CancelActiveScan();
         }
         base.OnClosing(e);
+    }
+
+    private void GamesListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel) return;
+        foreach (var removed in e.RemovedItems) if (removed is GameSummary game) viewModel.SelectedGames.Remove(game);
+        foreach (var added in e.AddedItems) if (added is GameSummary game) viewModel.SelectedGames.Add(game);
     }
 }

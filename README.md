@@ -35,6 +35,8 @@ A Windows 10/11 desktop application that safely indexes ROM and game files witho
 - SHA-1 plus CRC32 matching for regular files and ROM contents inside ZIP/7z/RAR archives; filenames alone never produce a verified result
 - Conservative preferred-copy recommendations that prioritize verified, available USA/World releases and avoid beta/prototype/demo/bad-dump/hack labels
 - Likely-duplicate title review: a bucketed Levenshtein scan (with an explicit guard against numbered-sequel false positives) surfaces near-identical titles across the whole library for a human to merge or dismiss — nothing is merged automatically
+- Multi-select bulk actions: exclude every non-preferred copy, or clear manual preference/exclusion overrides, across all selected games at once
+- Best-effort box art from [libretro-thumbnails](https://github.com/libretro-thumbnails), matched against the verified catalog name (falling back to the parsed title), cached locally with a negative-result cache so a miss is not retried for 30 days
 - Rotating session logs under `%LOCALAPPDATA%\CozziForged\RomManager\Logs` (2 MiB per file, 20 files maximum, 14-day retention)
 - Optional `--verbose-scan` diagnostics for per-file unchanged and unsupported skip reasons
 - xUnit coverage for parsing, grouping, hashing, enumeration, and ambiguous format hints
@@ -97,6 +99,7 @@ Starting with v1.4.0, place the patch that matches your installed version in `C:
 6. Use **Export CSV** to create a portable inventory of every indexed physical copy and its source folder.
 7. Select a system and use **Verify Catalog** to download/cache its checksum DAT and verify each copy. Selecting **All systems** is supported but may take hours because complete hashes require reading every ROM.
 8. Use **Review Duplicate Titles** to scan the whole library for likely-duplicate game titles (typos, alternate spellings, punctuation differences) and choose which copy to keep for each pair. Nothing merges until you pick a side.
+9. Select multiple games in the list (click, Ctrl+click, Shift+click) and use **Exclude Non-Preferred Copies** to keep only the automatically preferred copy per game, or **Clear Overrides** to reset manual choices back to automatic.
 
 Configured locations are reconciled when **Scan Now** is selected. Unchanged files avoid parsing and hashing. Files that disappear are marked `Missing`; reconnecting and rescanning restores them.
 
@@ -117,4 +120,4 @@ For detailed scanner diagnostics, launch `RomManager.exe --verbose-scan`. Normal
 
 ## Milestone boundary
 
-Metadata/cover downloads, emulator launching, destructive file organization, automatic fuzzy merges, and in-place archive extraction are intentionally excluded.
+Emulator launching, destructive file organization, automatic fuzzy merges, and in-place archive extraction are intentionally excluded. Cover art download (read-only, best-effort, cached locally) is now included; broader metadata download (descriptions, release dates, genres) is not.

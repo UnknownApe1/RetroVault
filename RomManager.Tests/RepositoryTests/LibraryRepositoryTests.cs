@@ -198,6 +198,42 @@ public sealed class LibraryRepositoryTests : IDisposable
         Assert.False(await verify.Games.AnyAsync(x => x.Id == duplicate.Id));
     }
 
+    [Fact]
+    public async Task ExcludeNonPreferredCopiesAsync_ExcludesEveryCopyExceptThePreferredOne()
+    {
+        var (gameId, usaFileId, japanFileId) = await SeedTwoCopiesAsync();
+        await repository.RecalculatePreferredCopiesAsync(null, CancellationToken.None);
+
+        await repository.ExcludeNonPreferredCopiesAsync([gameId], CancellationToken.None);
+
+        await using var db = CreateContext();
+        var usa = await db.GameFiles.SingleAsync(x => x.Id == usaFileId);
+        var japan = await db.GameFiles.SingleAsync(x => x.Id == japanFileId);
+        Assert.True(usa.IsPreferred);
+        Assert.False(usa.IsExcluded);
+        Assert.False(japan.IsPreferred);
+        Assert.True(japan.IsExcluded);
+    }
+
+    [Fact]
+    public async Task ClearCopyOverridesAsync_ResetsManualPreferenceAndExclusion()
+    {
+        var (gameId, usaFileId, japanFileId) = await SeedTwoCopiesAsync();
+        await repository.SetCopyPreferenceAsync(japanFileId, manuallyPreferred: true, excluded: false, CancellationToken.None);
+
+        await repository.ClearCopyOverridesAsync([gameId], CancellationToken.None);
+
+        await using var db = CreateContext();
+        var usa = await db.GameFiles.SingleAsync(x => x.Id == usaFileId);
+        var japan = await db.GameFiles.SingleAsync(x => x.Id == japanFileId);
+        Assert.False(japan.IsManuallyPreferred);
+        Assert.False(japan.IsExcluded);
+        Assert.False(usa.IsManuallyPreferred);
+        // Automatic scoring resumes: the verified USA copy outranks the unverified Japan copy again.
+        Assert.True(usa.IsPreferred);
+        Assert.False(japan.IsPreferred);
+    }
+
     private sealed class TestDbContextFactory(DbContextOptions<RomManagerDbContext> options) : IDbContextFactory<RomManagerDbContext>
     {
         public RomManagerDbContext CreateDbContext() => new(options);
