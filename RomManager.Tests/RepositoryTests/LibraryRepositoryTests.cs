@@ -160,6 +160,19 @@ public sealed class LibraryRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchGamesAsync_IncludesSystemKeyAndPreferredCatalogNameForThumbnailLookup()
+    {
+        await SeedTwoCopiesAsync(usaVerified: true);
+        await repository.RecalculatePreferredCopiesAsync(null, CancellationToken.None);
+
+        var results = await repository.SearchGamesAsync(null, null, LibraryViewFilter.All, CancellationToken.None);
+
+        var summary = Assert.Single(results);
+        Assert.Equal("NES", summary.SystemKey);
+        Assert.Equal("Test Game (USA)", summary.PreferredCatalogName);
+    }
+
+    [Fact]
     public async Task GetLibraryExportRowsAsync_IncludesCatalogAndPreferenceFields()
     {
         var (_, usaFileId, _) = await SeedTwoCopiesAsync();
