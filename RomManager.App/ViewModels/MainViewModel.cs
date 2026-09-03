@@ -259,7 +259,10 @@ public sealed class MainViewModel : ObservableObject
         var token = cancellation.Token;
         var file = SelectedFile;
         var systemKey = GameDetails?.SystemDefinition?.Key;
-        var title = file?.CatalogName ?? GameDetails?.CanonicalTitle;
+        // A verified catalog name is the reliable match. Absent that (NoMatch/Unknown files), fall back to the
+        // parsed title with its region tag reattached, since that is what libretro-thumbnails actually names
+        // files after ("Banjo-Tooie (USA)") — the bare canonical title alone almost never matches.
+        var title = file?.CatalogName ?? BuildFallbackThumbnailTitle(GameDetails?.CanonicalTitle, file?.Region);
         if (file is null || systemKey is null || title is null) { ThumbnailPath = null; return; }
         try
         {
@@ -268,6 +271,13 @@ public sealed class MainViewModel : ObservableObject
         }
         catch (OperationCanceledException) { }
         finally { if (ReferenceEquals(Interlocked.CompareExchange(ref thumbnailCancellation, null, cancellation), cancellation)) cancellation.Dispose(); }
+    }
+
+    private static string? BuildFallbackThumbnailTitle(string? canonicalTitle, string? region)
+    {
+        if (string.IsNullOrWhiteSpace(canonicalTitle)) return null;
+        var primaryRegion = string.IsNullOrWhiteSpace(region) ? null : region.Split(',', StringSplitOptions.TrimEntries).FirstOrDefault();
+        return string.IsNullOrWhiteSpace(primaryRegion) ? canonicalTitle : $"{canonicalTitle} ({primaryRegion})";
     }
     private async Task ExcludeNonPreferredAsync()
     {
