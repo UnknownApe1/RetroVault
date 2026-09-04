@@ -50,6 +50,7 @@ public sealed class SystemCatalog : ISystemDefinitionProvider, IFormatIdentifier
         {
             var score = c.Format.Priority;
             if (path.Contains($"/{c.System.Key}/", StringComparison.OrdinalIgnoreCase)) score += 100;
+            else if (ContainsKeyToken(path, c.System.Key)) score += 90;
             if (path.Contains(c.System.Name, StringComparison.OrdinalIgnoreCase)) score += 75;
             if (candidates.Count == 1) score += 50;
             return (c.System, c.Format, Score: score);
@@ -60,4 +61,21 @@ public sealed class SystemCatalog : ISystemDefinitionProvider, IFormatIdentifier
     }
 
     private static string NormalizeExtension(string extension) => extension.StartsWith('.') ? extension.ToLowerInvariant() : $".{extension.ToLowerInvariant()}";
+
+    // A folder like "PS3_Games" or "SNES-USA" carries the system key but never as an isolated path segment
+    // ("/PS3/"), so the exact-segment check above misses it. This looks for the key as a whole token —
+    // bounded by non-alphanumeric characters on both sides — anywhere in the path, which catches those
+    // common naming conventions without matching a key that merely happens to be a substring of another
+    // word (e.g. "GC" inside "MAGIC").
+    private static bool ContainsKeyToken(string path, string key)
+    {
+        for (var index = path.IndexOf(key, StringComparison.OrdinalIgnoreCase); index >= 0; index = path.IndexOf(key, index + 1, StringComparison.OrdinalIgnoreCase))
+        {
+            var beforeOk = index == 0 || !char.IsLetterOrDigit(path[index - 1]);
+            var afterIndex = index + key.Length;
+            var afterOk = afterIndex >= path.Length || !char.IsLetterOrDigit(path[afterIndex]);
+            if (beforeOk && afterOk) return true;
+        }
+        return false;
+    }
 }

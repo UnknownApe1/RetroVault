@@ -14,6 +14,27 @@ public sealed class SystemCatalogTests
         Assert.Equal("PS2", result.System?.Key); Assert.True(result.Confidence > .5);
     }
 
+    [Fact]
+    public void ResolvesSystemFromAFolderNameThatEmbedsTheKeyAsAWholeToken()
+    {
+        // Regression: a real user's "PS3_Games" folder (key never appears as an isolated "/PS3/" segment)
+        // was resolving PS3 .iso files to PS2 instead, because PS2's higher raw priority for .iso won once
+        // no folder hint applied. The key must still match as a whole token, not as an arbitrary substring.
+        var catalog = new SystemCatalog();
+        var file = new FileCandidate(Path.Combine("D:", "Games", "Roms", "PS3_Games", "Some Game (USA).iso"), "Some Game (USA).iso", ".iso", 10, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var result = catalog.Identify(file);
+        Assert.Equal("PS3", result.System?.Key);
+    }
+
+    [Fact]
+    public void DoesNotMatchAKeyThatIsOnlyASubstringOfAnUnrelatedWord()
+    {
+        var catalog = new SystemCatalog();
+        var file = new FileCandidate(Path.Combine("D:", "Games", "Roms", "MAGIC_Collection", "Some Game (USA).iso"), "Some Game (USA).iso", ".iso", 10, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var result = catalog.Identify(file);
+        Assert.NotEqual("GC", result.System?.Key);
+    }
+
     [Theory]
     [InlineData("SATURN")]
     [InlineData("SEGACD")]
