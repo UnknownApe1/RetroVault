@@ -92,6 +92,7 @@ public sealed class GameFile
     public bool IsManuallyPreferred { get; set; }
     public bool IsExcluded { get; set; }
     public int PreferenceScore { get; set; }
+    public bool IsDirectory { get; set; }
     public DateTimeOffset LastSeen { get; set; } = DateTimeOffset.UtcNow;
     public List<FileHash> Hashes { get; set; } = [];
 }

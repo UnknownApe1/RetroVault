@@ -219,6 +219,7 @@ public sealed class MainViewModel : ObservableObject
     private async Task VerifyHashAsync()
     {
         if (SelectedFile is null) return;
+        if (SelectedFile.IsDirectory) { StatusText = "SHA-256 verification isn't available for folder-based games."; return; }
         StatusText = $"Verifying {SelectedFile.FileName}...";
         try { var sha = await hashes.ComputeSha256Async(SelectedFile.FullPath, CancellationToken.None); await repository.SaveSha256Async(SelectedFile.Id, sha, CancellationToken.None); await repository.MarkExactDuplicatesAsync(sha, CancellationToken.None); StatusText = $"SHA-256 verified: {sha[..12]}..."; await RefreshLibraryAsync(); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { StatusText = $"Verification failed: {ex.Message}"; }

@@ -17,7 +17,9 @@ public sealed record FileCandidate(
     string Extension,
     long Size,
     DateTimeOffset Created,
-    DateTimeOffset Modified);
+    DateTimeOffset Modified,
+    bool IsDirectoryGame = false,
+    string? IdentityFilePath = null);
 
 public sealed record IdentificationResult(SystemDefinition? System, SystemFormat? Format, double Confidence, string Reason);
 
@@ -62,7 +64,7 @@ public sealed record LibraryExportRow(
 
 public sealed record CatalogEntry(string Name, string RomName, long Size, string? Crc32, string? Md5, string? Sha1, string? Sha256);
 
-public sealed record VerificationCandidate(long Id, long GameId, string SystemKey, string FullPath, string FileName, string Extension, long Size, FileStatus Status, string? Region, string? Revision);
+public sealed record VerificationCandidate(long Id, long GameId, string SystemKey, string FullPath, string FileName, string Extension, long Size, FileStatus Status, string? Region, string? Revision, bool IsDirectory = false);
 
 public sealed record CatalogVerificationUpdate(long FileId, CatalogVerificationStatus Status, string Source, string? CatalogName, string? Sha1, string? Crc32, string? Error);
 
@@ -72,7 +74,7 @@ public sealed record CatalogVerificationResult(int Systems, long Files, long Ver
 
 public sealed record FuzzyMatchCandidate(long GameAId, string GameATitle, long GameBId, string GameBTitle, string SystemName, int FileCountA, int FileCountB, double Similarity);
 
-public sealed record PreferredExportFile(string SystemName, string FullPath, string FileName);
+public sealed record PreferredExportFile(string SystemName, string FullPath, string FileName, bool IsDirectory = false);
 
 public sealed record LibraryExportProgress(long FilesCompleted, long FilesTotal, string CurrentItem);
 

@@ -35,6 +35,16 @@ public sealed class SystemCatalogTests
         Assert.NotEqual("GC", result.System?.Key);
     }
 
+    [Fact]
+    public void ResolvesTheDirectoryGameSentinelExtensionToPs3()
+    {
+        var catalog = new SystemCatalog();
+        var file = new FileCandidate(Path.Combine("D:", "Games", "Roms", "PS3_Games", "BLUS30057-[Army of Two TM]"), "BLUS30057-[Army of Two TM]", ".ps3dir", 1000, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, IsDirectoryGame: true);
+        var result = catalog.Identify(file);
+        Assert.Equal("PS3", result.System?.Key);
+        Assert.Equal(FileCategory.DirectoryGame, result.Format?.FormatType);
+    }
+
     [Theory]
     [InlineData("SATURN")]
     [InlineData("SEGACD")]

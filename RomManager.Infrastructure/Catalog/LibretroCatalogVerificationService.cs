@@ -26,9 +26,23 @@ public sealed class LibretroCatalogVerificationService(IFileSystem fileSystem, I
         foreach (var group in groups)
         {
             ct.ThrowIfCancellationRequested();
+            // Folder-based installs (PS3/RPCS3-style directory games) have no single-file dump to hash
+            // against a Redump/No-Intro DAT, so they're marked Unsupported directly without ever being
+            // opened - regardless of whether the system otherwise has a catalog mapping.
+            var directoryCandidates = group.Where(x => x.IsDirectory).ToArray();
+            if (directoryCandidates.Length > 0)
+            {
+                var directoryUpdates = directoryCandidates.Select(x => new CatalogVerificationUpdate(x.Id, CatalogVerificationStatus.Unsupported, "Folder-based install", null, null, null, null)).ToArray();
+                await repository.ApplyCatalogVerificationAsync(directoryUpdates, ct);
+                unsupported += directoryUpdates.Length; filesComplete += directoryUpdates.Length;
+                progress?.Report(new(systemsComplete, groups.Length, filesComplete, candidates.Count, $"Skipped folder-based installs for {group.Key}"));
+            }
+            var fileCandidates = group.Where(x => !x.IsDirectory).ToArray();
+            if (fileCandidates.Length == 0) { systemsComplete++; continue; }
+
             if (!Catalogs.TryGetValue(group.Key, out var definition))
             {
-                var updates = group.Select(x => new CatalogVerificationUpdate(x.Id, CatalogVerificationStatus.Unsupported, "No catalog mapping", null, null, null, null)).ToArray();
+                var updates = fileCandidates.Select(x => new CatalogVerificationUpdate(x.Id, CatalogVerificationStatus.Unsupported, "No catalog mapping", null, null, null, null)).ToArray();
                 await repository.ApplyCatalogVerificationAsync(updates, ct);
                 unsupported += updates.Length; filesComplete += updates.Length; systemsComplete++;
                 progress?.Report(new(systemsComplete, groups.Length, filesComplete, candidates.Count, $"No catalog mapping for {group.Key}"));
@@ -45,7 +59,7 @@ public sealed class LibretroCatalogVerificationService(IFileSystem fileSystem, I
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogWarning(ex, "Could not load verification catalog for {SystemKey}", group.Key);
-                var updates = group.Select(x => new CatalogVerificationUpdate(x.Id, CatalogVerificationStatus.Error, definition.DisplaySource, null, null, null, ex.Message)).ToArray();
+                var updates = fileCandidates.Select(x => new CatalogVerificationUpdate(x.Id, CatalogVerificationStatus.Error, definition.DisplaySource, null, null, null, ex.Message)).ToArray();
                 await repository.ApplyCatalogVerificationAsync(updates, ct);
                 errors += updates.Length; filesComplete += updates.Length; systemsComplete++;
                 progress?.Report(new(systemsComplete, groups.Length, filesComplete, candidates.Count, $"Catalog error for {group.Key}"));
@@ -55,7 +69,7 @@ public sealed class LibretroCatalogVerificationService(IFileSystem fileSystem, I
             var sha1Index = entries.Where(x => x.Sha1 is not null).GroupBy(x => x.Sha1!, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
             var crcIndex = entries.Where(x => x.Crc32 is not null && x.Sha1 is null).GroupBy(x => (x.Size, x.Crc32!)).ToDictionary(x => x.Key, x => x.First());
             var pending = new List<CatalogVerificationUpdate>(100);
-            foreach (var candidate in group)
+            foreach (var candidate in fileCandidates)
             {
                 ct.ThrowIfCancellationRequested();
                 CatalogVerificationUpdate update;

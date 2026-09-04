@@ -58,7 +58,8 @@ public sealed class LibraryScanner(IFileSystem fileSystem, IFormatIdentifier for
                 var existing = snapshot is null ? null : await repository.FindFileByPathAsync(candidate.FullPath, cancellationToken);
                 var identified = candidate.Extension is ".zip" or ".7z" or ".rar" ? await archives.IdentifyContentsAsync(candidate, cancellationToken) ?? formats.Identify(candidate) : formats.Identify(candidate);
                 if (identified.System is null || identified.Format is null) { if (snapshot is not null) await QueueUnchangedAsync(snapshot.Id); counts.AddUnsupported(candidate.Extension); logger.LogDebug("Skipped unidentified file {Path} ({Reason})", candidate.FullPath, identified.Reason); Report(candidate.FullPath); continue; }
-                var parsed = parser.Parse(candidate.FileName);
+                var directoryTitle = candidate.IsDirectoryGame && candidate.IdentityFilePath is not null ? await TryReadDirectoryGameTitleAsync(candidate.IdentityFilePath, cancellationToken) : null;
+                var parsed = parser.Parse(directoryTitle ?? candidate.FileName);
                 var game = await repository.GetOrCreateGameAsync(parsed.Title, parsed.NormalizedTitle, identified.System.Id, cancellationToken);
                 var file = existing ?? new GameFile { FullPath = candidate.FullPath, FileName = candidate.FileName, Extension = candidate.Extension, ScanLocationId = location.Id };
                 file.GameId = game.Id;
@@ -74,9 +75,16 @@ public sealed class LibraryScanner(IFileSystem fileSystem, IFormatIdentifier for
                 file.Version = parsed.Version;
                 file.DiscNumber = parsed.DiscNumber;
                 file.TrackNumber = parsed.TrackNumber;
+                file.IsDirectory = candidate.IsDirectoryGame;
                 if (identified.Format.IsMultiFile || parsed.TrackNumber.HasValue || (candidate.Extension == ".bin" && identified.Format.FormatType == FileCategory.DiscImage))
                     file.FileGroupId = await repository.GetOrCreateFileGroupAsync(game.Id, parsed.DiscNumber.HasValue ? $"Disc {parsed.DiscNumber}" : parsed.Title, parsed.DiscNumber, cancellationToken);
-                file.QuickHash = await hashes.ComputeQuickHashAsync(candidate.FullPath, candidate.Size, cancellationToken);
+                // A directory game's "quick hash" is a hash of its small PARAM.SFO identity file, not a
+                // sample of the (potentially many-GB) directory tree - hashing directory contents wholesale
+                // isn't practical during a routine scan, so exact-duplicate detection across directory
+                // installs is not attempted in this pass.
+                file.QuickHash = candidate.IsDirectoryGame && candidate.IdentityFilePath is not null
+                    ? "paramsfo:" + await hashes.ComputeSha256Async(candidate.IdentityFilePath, cancellationToken)
+                    : await hashes.ComputeQuickHashAsync(candidate.FullPath, candidate.Size, cancellationToken);
                 file.LastSeen = started;
                 file.Status = FileStatus.Normal;
                 file.CatalogStatus = CatalogVerificationStatus.Unknown;
@@ -87,20 +95,23 @@ public sealed class LibraryScanner(IFileSystem fileSystem, IFormatIdentifier for
                 file.PreferenceScore = 0;
                 await repository.UpsertFileAsync(file, cancellationToken);
                 snapshots[candidate.FullPath] = new ExistingFileSnapshot(file.Id, file.FullPath, file.Size, file.ModifiedDate, file.Status);
-                var collisions = await repository.FindQuickHashMatchesAsync(file.QuickHash, file.Size, file.Id, cancellationToken);
-                if (collisions.Count > 0)
+                if (!candidate.IsDirectoryGame)
                 {
-                    var currentSha = await hashes.ComputeSha256Async(file.FullPath, cancellationToken);
-                    await repository.SaveSha256Async(file.Id, currentSha, cancellationToken);
-                    foreach (var collision in collisions)
+                    var collisions = await repository.FindQuickHashMatchesAsync(file.QuickHash, file.Size, file.Id, cancellationToken);
+                    if (collisions.Count > 0)
                     {
-                        var collisionSha = collision.Hashes.FirstOrDefault(x => x.Algorithm == "SHA256")?.Hash;
-                        if (collisionSha is null)
+                        var currentSha = await hashes.ComputeSha256Async(file.FullPath, cancellationToken);
+                        await repository.SaveSha256Async(file.Id, currentSha, cancellationToken);
+                        foreach (var collision in collisions)
                         {
-                            collisionSha = await hashes.ComputeSha256Async(collision.FullPath, cancellationToken);
-                            await repository.SaveSha256Async(collision.Id, collisionSha, cancellationToken);
+                            var collisionSha = collision.Hashes.FirstOrDefault(x => x.Algorithm == "SHA256")?.Hash;
+                            if (collisionSha is null)
+                            {
+                                collisionSha = await hashes.ComputeSha256Async(collision.FullPath, cancellationToken);
+                                await repository.SaveSha256Async(collision.Id, collisionSha, cancellationToken);
+                            }
+                            if (collisionSha == currentSha) await repository.MarkExactDuplicatesAsync(currentSha, cancellationToken);
                         }
-                        if (collisionSha == currentSha) await repository.MarkExactDuplicatesAsync(currentSha, cancellationToken);
                     }
                 }
                 if (existing is null) counts.Added++; else counts.Changed++;
@@ -142,6 +153,20 @@ public sealed class LibraryScanner(IFileSystem fileSystem, IFormatIdentifier for
             if (progress is null || (!force && progressClock.ElapsedMilliseconds < 250)) return;
             progress.Report(new ScanProgress(counts.Discovered, counts.Processed, counts.Skipped, counts.Added, counts.Changed, counts.Missing, current));
             progressClock.Restart();
+        }
+    }
+
+    private async Task<string?> TryReadDirectoryGameTitleAsync(string identityFilePath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var stream = await fileSystem.OpenReadAsync(identityFilePath, cancellationToken);
+            return RomManager.Core.Grouping.ParamSfoReader.TryReadTitle(stream);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogDebug(ex, "Could not read directory-game title from {Path}", identityFilePath);
+            return null;
         }
     }
 

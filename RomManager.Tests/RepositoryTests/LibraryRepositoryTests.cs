@@ -382,6 +382,32 @@ public sealed class LibraryRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetPreferredExportFilesAsync_AndGetVerificationCandidatesAsync_SurfaceTheIsDirectoryFlag()
+    {
+        await using var db = CreateContext();
+        var system = new SystemDefinition { Key = "PS3", Name = "PlayStation 3", Manufacturer = "Sony" };
+        db.Systems.Add(system);
+        var location = new ScanLocation { Path = "D:\\Games\\Roms\\PS3_Games" };
+        db.ScanLocations.Add(location);
+        await db.SaveChangesAsync();
+        var game = new Game { CanonicalTitle = "Army of Two", SortTitle = "Army of Two", NormalizedTitle = "armyoftwo", SystemDefinitionId = system.Id };
+        db.Games.Add(game);
+        await db.SaveChangesAsync();
+        db.GameFiles.Add(new GameFile
+        {
+            GameId = game.Id, ScanLocationId = location.Id, FullPath = "D:\\Games\\Roms\\PS3_Games\\Army of Two", FileName = "Army of Two", Extension = ".ps3dir",
+            Status = FileStatus.Normal, IsDirectory = true, IsPreferred = true
+        });
+        await db.SaveChangesAsync();
+
+        var exportFiles = await repository.GetPreferredExportFilesAsync(onlyWanted: false, CancellationToken.None);
+        var verificationCandidates = await repository.GetVerificationCandidatesAsync(null, includeAlreadyChecked: true, CancellationToken.None);
+
+        Assert.True(Assert.Single(exportFiles).IsDirectory);
+        Assert.True(Assert.Single(verificationCandidates).IsDirectory);
+    }
+
+    [Fact]
     public async Task GetDuplicateFileReportAsync_GroupsDuplicateStatusFilesBySha256()
     {
         await using var db = CreateContext();

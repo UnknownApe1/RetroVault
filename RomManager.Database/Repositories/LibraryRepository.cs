@@ -294,7 +294,7 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
         // without it, re-running "Verify Catalog" always re-hashes the entire library from scratch.
         if (!includeAlreadyChecked) query = query.Where(x => x.CatalogStatus == CatalogVerificationStatus.Unknown || x.CatalogStatus == CatalogVerificationStatus.Error);
         return await query.OrderBy(x => x.Game!.SystemDefinition!.Key).ThenBy(x => x.GameId).ThenBy(x => x.FullPath)
-            .Select(x => new VerificationCandidate(x.Id, x.GameId!.Value, x.Game!.SystemDefinition!.Key, x.FullPath, x.FileName, x.Extension, x.Size, x.Status, x.Region, x.Revision))
+            .Select(x => new VerificationCandidate(x.Id, x.GameId!.Value, x.Game!.SystemDefinition!.Key, x.FullPath, x.FileName, x.Extension, x.Size, x.Status, x.Region, x.Revision, x.IsDirectory))
             .ToListAsync(ct);
     }
 
@@ -456,7 +456,7 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
         if (onlyWanted) query = query.Where(x => x.Game!.IsWanted);
         return await query
             .OrderBy(x => x.Game!.SystemDefinition!.Name).ThenBy(x => x.FileName)
-            .Select(x => new PreferredExportFile(x.Game!.SystemDefinition!.Name, x.FullPath, x.FileName))
+            .Select(x => new PreferredExportFile(x.Game!.SystemDefinition!.Name, x.FullPath, x.FileName, x.IsDirectory))
             .ToListAsync(ct);
     }
 
