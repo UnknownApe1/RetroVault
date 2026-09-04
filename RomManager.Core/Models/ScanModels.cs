@@ -78,6 +78,8 @@ public sealed record LibraryExportProgress(long FilesCompleted, long FilesTotal,
 
 public sealed record LibraryExportOperationResult(long Copied, long Skipped, long Errors);
 
+public sealed record TitleCleanupCandidate(long GameId, string SystemName, string CurrentTitle, string SuggestedTitle, string Reason);
+
 public sealed class IncompleteFileEnumerationException(string rootPath, int errorCount)
     : IOException($"The scan could not read {errorCount:N0} path(s) under {rootPath}. Indexed changes were saved, but missing-file detection was skipped for safety.")
 {

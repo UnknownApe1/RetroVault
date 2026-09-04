@@ -65,6 +65,8 @@ public interface ILibraryRepository
     Task MergeGamesAsync(long keepGameId, long mergeGameId, CancellationToken cancellationToken);
     Task<IReadOnlyList<PreferredExportFile>> GetPreferredExportFilesAsync(bool onlyWanted, CancellationToken cancellationToken);
     Task SetGamesWantedAsync(IReadOnlyList<long> gameIds, bool wanted, CancellationToken cancellationToken);
+    Task<IReadOnlyList<TitleCleanupCandidate>> GetTitleCleanupCandidatesAsync(CancellationToken cancellationToken);
+    Task ApplyTitleCleanupAsync(long gameId, string newTitle, CancellationToken cancellationToken);
     Task<IReadOnlyList<SystemDefinition>> GetSystemsAsync(CancellationToken cancellationToken);
 }
 

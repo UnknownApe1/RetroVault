@@ -74,6 +74,8 @@ public sealed class LibraryExportServiceTests : IDisposable
     {
         public Task<IReadOnlyList<PreferredExportFile>> GetPreferredExportFilesAsync(bool onlyWanted, CancellationToken ct) => Task.FromResult(files);
         public Task SetGamesWantedAsync(IReadOnlyList<long> gameIds, bool wanted, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<TitleCleanupCandidate>> GetTitleCleanupCandidatesAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task ApplyTitleCleanupAsync(long gameId, string newTitle, CancellationToken ct) => throw new NotSupportedException();
 
         public Task InitializeAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<ScanLocation>> GetScanLocationsAsync(bool enabledOnly, CancellationToken ct) => throw new NotSupportedException();

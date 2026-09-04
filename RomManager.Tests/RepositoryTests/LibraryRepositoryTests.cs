@@ -293,6 +293,71 @@ public sealed class LibraryRepositoryTests : IDisposable
         Assert.False(japan.IsPreferred);
     }
 
+    [Fact]
+    public async Task GetTitleCleanupCandidatesAsync_SuggestsStrippingANumericRankPrefix()
+    {
+        await using var db = CreateContext();
+        var system = new SystemDefinition { Key = "NES", Name = "NES", Manufacturer = "Nintendo" };
+        db.Systems.Add(system);
+        await db.SaveChangesAsync();
+        db.Games.Add(new Game { CanonicalTitle = "0002 Dragon Quest 1+2", SortTitle = "0002 Dragon Quest 1+2", NormalizedTitle = "0002dragonquest12", SystemDefinitionId = system.Id });
+        await db.SaveChangesAsync();
+
+        var candidates = await repository.GetTitleCleanupCandidatesAsync(CancellationToken.None);
+
+        var candidate = Assert.Single(candidates);
+        Assert.Equal("Dragon Quest 1+2", candidate.SuggestedTitle);
+    }
+
+    [Fact]
+    public async Task GetTitleCleanupCandidatesAsync_PrefersTheVerifiedCatalogNameWhenOneExists()
+    {
+        var (gameId, usaFileId, _) = await SeedTwoCopiesAsync(usaVerified: true);
+        await repository.RecalculatePreferredCopiesAsync(null, CancellationToken.None);
+        await using (var db = CreateContext())
+        {
+            var game = await db.Games.SingleAsync(x => x.Id == gameId);
+            game.CanonicalTitle = "0005 Test Game";
+            await db.SaveChangesAsync();
+        }
+
+        var candidates = await repository.GetTitleCleanupCandidatesAsync(CancellationToken.None);
+
+        var candidate = Assert.Single(candidates);
+        Assert.Equal("Test Game", candidate.SuggestedTitle);
+        Assert.Equal("Matches verified catalog name", candidate.Reason);
+    }
+
+    [Fact]
+    public async Task GetTitleCleanupCandidatesAsync_LeavesTitlesWithoutARankPrefixOrVerifiedNameAlone()
+    {
+        await using var db = CreateContext();
+        var system = new SystemDefinition { Key = "NES", Name = "NES", Manufacturer = "Nintendo" };
+        db.Systems.Add(system);
+        await db.SaveChangesAsync();
+        db.Games.Add(new Game { CanonicalTitle = "1080 Snowboarding", SortTitle = "1080 Snowboarding", NormalizedTitle = "1080snowboarding", SystemDefinitionId = system.Id });
+        await db.SaveChangesAsync();
+
+        var candidates = await repository.GetTitleCleanupCandidatesAsync(CancellationToken.None);
+
+        Assert.Empty(candidates);
+    }
+
+    [Fact]
+    public async Task ApplyTitleCleanupAsync_UpdatesTheCanonicalTitleButLeavesTheNormalizedTitleUnchanged()
+    {
+        var (gameId, _, _) = await SeedTwoCopiesAsync();
+        string normalizedTitleBefore;
+        await using (var db = CreateContext()) normalizedTitleBefore = (await db.Games.SingleAsync(x => x.Id == gameId)).NormalizedTitle;
+
+        await repository.ApplyTitleCleanupAsync(gameId, "Test Game (Cleaned)", CancellationToken.None);
+
+        await using var verify = CreateContext();
+        var game = await verify.Games.SingleAsync(x => x.Id == gameId);
+        Assert.Equal("Test Game (Cleaned)", game.CanonicalTitle);
+        Assert.Equal(normalizedTitleBefore, game.NormalizedTitle);
+    }
+
     private sealed class TestDbContextFactory(DbContextOptions<RomManagerDbContext> options) : IDbContextFactory<RomManagerDbContext>
     {
         public RomManagerDbContext CreateDbContext() => new(options);

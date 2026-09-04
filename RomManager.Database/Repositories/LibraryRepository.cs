@@ -455,6 +455,50 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<TitleCleanupCandidate>> GetTitleCleanupCandidatesAsync(CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var games = await db.Games.AsNoTracking().Select(x => new
+        {
+            x.Id,
+            x.CanonicalTitle,
+            SystemName = x.SystemDefinition!.Name,
+            VerifiedCatalogName = x.Files.Where(f => f.CatalogStatus == CatalogVerificationStatus.Verified && f.CatalogName != null)
+                .OrderByDescending(f => f.IsPreferred).Select(f => f.CatalogName).FirstOrDefault()
+        }).ToListAsync(ct);
+        var results = new List<TitleCleanupCandidate>();
+        foreach (var game in games)
+        {
+            string suggested; string reason;
+            if (!string.IsNullOrWhiteSpace(game.VerifiedCatalogName))
+            {
+                suggested = TitlePrefixCleaner.StripTrailingTags(game.VerifiedCatalogName).Trim();
+                reason = "Matches verified catalog name";
+            }
+            else
+            {
+                var stripped = TitlePrefixCleaner.TryStripRankPrefix(game.CanonicalTitle);
+                if (stripped is null) continue;
+                suggested = TitlePrefixCleaner.StripTrailingTags(stripped).Trim();
+                reason = "Removes numeric catalog-rank prefix";
+            }
+            if (suggested.Length == 0 || suggested == game.CanonicalTitle) continue;
+            results.Add(new TitleCleanupCandidate(game.Id, game.SystemName, game.CanonicalTitle, suggested, reason));
+        }
+        return results.OrderBy(x => x.SystemName).ThenBy(x => x.CurrentTitle, StringComparer.OrdinalIgnoreCase).Take(1000).ToList();
+    }
+
+    public async Task ApplyTitleCleanupAsync(long gameId, string newTitle, CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var game = await db.Games.SingleOrDefaultAsync(x => x.Id == gameId, ct);
+        if (game is null) return;
+        game.CanonicalTitle = newTitle;
+        game.SortTitle = CreateSortTitle(newTitle);
+        await db.SaveChangesAsync(ct);
+        gamesByKey = null;
+    }
+
     public async Task<IReadOnlyList<SystemDefinition>> GetSystemsAsync(CancellationToken ct)
     { await using var db = await factory.CreateDbContextAsync(ct); return await db.Systems.AsNoTracking().OrderBy(x => x.Name).ToListAsync(ct); }
 
