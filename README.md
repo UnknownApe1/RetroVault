@@ -26,9 +26,9 @@ A Windows 10/11 desktop application that safely indexes ROM and game files witho
 - Exact duplicate status only after matching full SHA-256 hashes
 - SQLite library with an internal versioned schema migration
 - Search by game title, physical filename, or path; filter by system
-- High-contrast Midnight Teal interface with explicit readable text colors and independently scrollable system navigation
+- "Neon Cartridge" interface: a near-black ground with a teal-to-violet gradient identity (wordmark, primary action, version badge), evolved from the original Midnight Teal palette rather than replacing it. Toolbar actions are grouped into pill clusters (Cleanup, Verify, Export) that wrap onto a second row instead of clipping off the window edge as more tools were added
 - Visible application version in both the title bar and header so installed builds are easy to identify
-- Fully retemplated buttons and dropdowns so disabled/expanded states stay legible, instead of the default WPF chrome silently overriding the dark theme
+- Fully retemplated buttons, dropdowns, and checkboxes so disabled/checked/expanded states stay legible, instead of the default WPF chrome silently overriding the dark theme
 - Game/file details, open containing folder, copy path, and verify SHA-256
 - Full UTF-8 CSV inventory export with source folder, physical path, parsed metadata, status, quick hash, and SHA-256
 - Exact online-catalog verification against Libretro's maintained No-Intro and Redump DAT mirrors, cached locally for seven days

@@ -3,23 +3,39 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:models="clr-namespace:RomManager.Core.Models;assembly=RomManager.Core">
   <Application.Resources>
-    <!-- High-contrast Midnight Teal theme -->
+    <!-- "Neon Cartridge" theme: a near-black ground with a teal-to-violet accent pair, evolved from the
+         original Midnight Teal palette rather than replacing it - same accent hue family, pushed brighter
+         and paired with a violet counterpart for gradients on the brand mark and primary actions. -->
     <DataTemplate DataType="{x:Type models:LibraryFilterOption}">
       <TextBlock Text="{Binding Name}"/>
     </DataTemplate>
-    <SolidColorBrush x:Key="WindowBrush" Color="#0A1220"/>
-    <SolidColorBrush x:Key="PanelBrush" Color="#101C2D"/>
-    <SolidColorBrush x:Key="RaisedBrush" Color="#17283D"/>
-    <SolidColorBrush x:Key="HoverBrush" Color="#213A55"/>
-    <SolidColorBrush x:Key="SelectedBrush" Color="#176B68"/>
-    <SolidColorBrush x:Key="BorderBrush" Color="#304A66"/>
-    <SolidColorBrush x:Key="AccentBrush" Color="#27C8BC"/>
-    <SolidColorBrush x:Key="AccentHoverBrush" Color="#3CDED3"/>
+    <SolidColorBrush x:Key="WindowBrush" Color="#060A10"/>
+    <SolidColorBrush x:Key="PanelBrush" Color="#0C121A"/>
+    <SolidColorBrush x:Key="RaisedBrush" Color="#101A26"/>
+    <SolidColorBrush x:Key="HoverBrush" Color="#16222F"/>
+    <SolidColorBrush x:Key="SelectedBrush" Color="#2337F0D8"/>
+    <SolidColorBrush x:Key="BorderBrush" Color="#1A2734"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#37F0D8"/>
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#6BF5E3"/>
+    <SolidColorBrush x:Key="Accent2Brush" Color="#8A6BFF"/>
     <SolidColorBrush x:Key="TextBrush" Color="#F2F6FC"/>
     <SolidColorBrush x:Key="SecondaryTextBrush" Color="#B5C5D8"/>
-    <SolidColorBrush x:Key="MutedTextBrush" Color="#8297AE"/>
+    <SolidColorBrush x:Key="MutedTextBrush" Color="#5C718A"/>
     <SolidColorBrush x:Key="WarningBrush" Color="#FFD166"/>
     <SolidColorBrush x:Key="DangerBrush" Color="#FF7184"/>
+
+    <LinearGradientBrush x:Key="BrandGradientBrush" StartPoint="0,0" EndPoint="1,0">
+      <GradientStop Color="#37F0D8" Offset="0"/>
+      <GradientStop Color="#8A6BFF" Offset="1"/>
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="PrimaryChipBrush" StartPoint="0,0" EndPoint="1,1">
+      <GradientStop Color="#37F0D8" Offset="0"/>
+      <GradientStop Color="#20B6A4" Offset="1"/>
+    </LinearGradientBrush>
+    <RadialGradientBrush x:Key="HeroWindowBrush" Center="0.15,-0.1" RadiusX="0.9" RadiusY="0.9">
+      <GradientStop Color="#14202B" Offset="0"/>
+      <GradientStop Color="#060A10" Offset="0.6"/>
+    </RadialGradientBrush>
 
     <Style TargetType="Window">
       <Setter Property="Background" Value="{StaticResource WindowBrush}"/>
@@ -44,7 +60,7 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7">
               <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True" TextElement.Foreground="{TemplateBinding Foreground}"/>
             </Border>
           </ControlTemplate>
@@ -63,17 +79,82 @@
       </Style.Triggers>
     </Style>
     <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
-      <Setter Property="Foreground" Value="#071716"/>
+      <Setter Property="Background" Value="{StaticResource PrimaryChipBrush}"/>
+      <Setter Property="Foreground" Value="#052321"/>
       <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
       <Style.Triggers>
-        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{StaticResource AccentHoverBrush}"/></Trigger>
+        <Trigger Property="IsMouseOver" Value="True"><Setter Property="BorderBrush" Value="{StaticResource AccentHoverBrush}"/></Trigger>
         <Trigger Property="IsEnabled" Value="False">
           <Setter Property="Foreground" Value="#0A2320"/>
           <Setter Property="Opacity" Value="0.5"/>
         </Trigger>
       </Style.Triggers>
+    </Style>
+    <!-- Pill-shaped toolbar buttons ("chips") - the primary variant carries the same gradient as the brand
+         mark so the one button you reach for constantly (Scan Now) visually anchors the header. -->
+    <Style x:Key="ChipButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Padding" Value="14,8"/>
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="MinHeight" Value="30"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="16">
+              <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True" TextElement.Foreground="{TemplateBinding Foreground}"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="{StaticResource HoverBrush}"/>
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+          <Setter Property="Opacity" Value="0.55"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+    <Style x:Key="PrimaryChipButton" TargetType="Button" BasedOn="{StaticResource ChipButton}">
+      <Setter Property="Background" Value="{StaticResource PrimaryChipBrush}"/>
+      <Setter Property="Foreground" Value="#052321"/>
+      <Style.Triggers>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Foreground" Value="#0A2320"/>
+          <Setter Property="Opacity" Value="0.5"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+    <!-- Retemplated for the same reason as ComboBox: the default CheckBox chrome paints a light
+         system-themed box that clashes with a dark theme and cannot be recolored via Background/Foreground. -->
+    <Style TargetType="CheckBox">
+      <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <StackPanel Orientation="Horizontal">
+              <Border x:Name="Box" Width="15" Height="15" CornerRadius="4" Background="{StaticResource RaisedBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" VerticalAlignment="Center">
+                <Path x:Name="Check" Data="M2,6.5 L5,9.5 L11,2.5" Stroke="{StaticResource WindowBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed"/>
+              </Border>
+              <ContentPresenter Margin="7,0,0,0" VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
+            </StackPanel>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Box" Property="Background" Value="{StaticResource AccentBrush}"/>
+                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
     <Style TargetType="TextBox">
       <Setter Property="Background" Value="#0D1929"/>

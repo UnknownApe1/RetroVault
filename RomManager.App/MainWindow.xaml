@@ -3,35 +3,49 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="{Binding WindowTitle, FallbackValue=ROM Manager}" Width="1380" Height="840" MinWidth="1050" MinHeight="650"
         WindowStartupLocation="CenterScreen">
-  <Grid Background="{StaticResource WindowBrush}">
-    <Grid.RowDefinitions><RowDefinition Height="70"/><RowDefinition Height="*"/><RowDefinition Height="42"/></Grid.RowDefinitions>
+  <Grid Background="{StaticResource HeroWindowBrush}">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="42"/></Grid.RowDefinitions>
 
-    <Border Grid.Row="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="18,10">
-      <DockPanel LastChildFill="True">
-        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
-          <Button Content="Review Duplicate Titles" Command="{Binding ReviewDuplicateTitlesCommand}" ToolTip="Find likely-duplicate game titles across the whole library for manual review and merge"/>
-          <Button Content="Clean Up Titles" Command="{Binding CleanUpTitlesCommand}" ToolTip="Review suggested display-name fixes (rank prefixes, catalog names) for manual approval. Your files are never renamed."/>
-          <Button Content="Merge Exact Duplicates" Command="{Binding MergeExactDuplicatesCommand}" ToolTip="Find games that share the exact same title within a system (often after Clean Up Titles) and merge them into one entry, so preferred-copy scoring and exports treat them as a single game."/>
-          <CheckBox Content="Re-verify all" IsChecked="{Binding ForceFullReverify}" VerticalAlignment="Center" Margin="4,0" Foreground="{StaticResource SecondaryTextBrush}" ToolTip="Off (default): only hash files that have never been checked or previously errored, so repeated runs are fast. On: re-check every file, including ones already verified."/>
-          <Button Content="Verify Catalog" Command="{Binding VerifyCatalogCommand}" ToolTip="Verify the selected system against trusted checksum catalogs"/>
-          <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" ToolTip="Export every indexed copy with its source, status, and hashes"/>
-          <Button Content="Duplicate Report" Command="{Binding ExportDuplicateReportCommand}" ToolTip="Export a CSV of byte-identical duplicate files and how much disk space could be reclaimed by keeping one copy per group. Read-only - nothing is deleted."/>
-          <Button Content="Export Good Roms" Command="{Binding ExportPreferredLibraryCommand}" ToolTip="Copy every game's preferred, non-excluded version into a folder organized by system. Originals are never moved, renamed, or modified."/>
-          <Button Content="Export Wanted Games" Command="{Binding ExportWantedLibraryCommand}" ToolTip="Copy only the games you've marked Wanted, using each one's preferred version, into a folder organized by system."/>
-          <Button Content="Add Folder" Command="{Binding AddFolderCommand}"/>
-          <Button Content="Scan Now" Command="{Binding ScanCommand}" Style="{StaticResource AccentButton}"/>
-          <Button Content="Cancel" Command="{Binding CancelCommand}"/>
-        </StackPanel>
-        <StackPanel VerticalAlignment="Center">
-          <StackPanel Orientation="Horizontal">
-            <TextBlock Text="ROM MANAGER" FontSize="22" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
-            <Border Background="{StaticResource SelectedBrush}" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1" CornerRadius="3" Margin="10,0,0,0" Padding="7,2" VerticalAlignment="Center">
-              <TextBlock Text="{Binding VersionText}" Foreground="{StaticResource TextBrush}" FontSize="11" FontWeight="SemiBold"/>
+    <Border Grid.Row="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="20,14,20,12">
+      <StackPanel>
+        <DockPanel LastChildFill="False" Margin="0,0,0,12">
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <TextBlock Text="ROM MANAGER" FontSize="21" FontWeight="ExtraBold" Foreground="{StaticResource BrandGradientBrush}" VerticalAlignment="Center"/>
+            <Border Margin="10,0,0,0" Padding="1" CornerRadius="10" BorderBrush="{StaticResource BrandGradientBrush}" BorderThickness="1" VerticalAlignment="Center">
+              <Border Background="{StaticResource RaisedBrush}" CornerRadius="9" Padding="8,2">
+                <TextBlock Text="{Binding VersionText}" Foreground="{StaticResource AccentBrush}" FontSize="10.5" FontWeight="SemiBold" FontFamily="Consolas"/>
+              </Border>
             </Border>
+            <TextBlock Text="Safe, read-only game library index" Foreground="{StaticResource MutedTextBrush}" FontSize="11.5" VerticalAlignment="Center" Margin="14,0,0,0"/>
           </StackPanel>
-          <TextBlock Text="Safe, read-only game library index" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12"/>
-        </StackPanel>
-      </DockPanel>
+          <Button DockPanel.Dock="Right" Content="Cancel" Command="{Binding CancelCommand}" Style="{StaticResource ChipButton}" Foreground="{StaticResource DangerBrush}"/>
+          <Button DockPanel.Dock="Right" Content="Scan Now" Command="{Binding ScanCommand}" Style="{StaticResource PrimaryChipButton}"/>
+          <Button DockPanel.Dock="Right" Content="Add Folder" Command="{Binding AddFolderCommand}" Style="{StaticResource ChipButton}"/>
+        </DockPanel>
+        <WrapPanel>
+          <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="18" Margin="0,3,8,3" Padding="3">
+            <StackPanel Orientation="Horizontal">
+              <Button Content="Clean Up Titles" Command="{Binding CleanUpTitlesCommand}" Style="{StaticResource ChipButton}" ToolTip="Review suggested display-name fixes (rank prefixes, catalog names) for manual approval. Your files are never renamed."/>
+              <Button Content="Merge Exact Duplicates" Command="{Binding MergeExactDuplicatesCommand}" Style="{StaticResource ChipButton}" ToolTip="Find games that share the exact same title within a system (often after Clean Up Titles) and merge them into one entry, so preferred-copy scoring and exports treat them as a single game."/>
+              <Button Content="Review Duplicate Titles" Command="{Binding ReviewDuplicateTitlesCommand}" Style="{StaticResource ChipButton}" ToolTip="Find likely-duplicate game titles across the whole library for manual review and merge"/>
+            </StackPanel>
+          </Border>
+          <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="18" Margin="0,3,8,3" Padding="3">
+            <StackPanel Orientation="Horizontal">
+              <Button Content="Verify Catalog" Command="{Binding VerifyCatalogCommand}" Style="{StaticResource ChipButton}" ToolTip="Verify the selected system against trusted checksum catalogs"/>
+              <CheckBox Content="Re-verify all" IsChecked="{Binding ForceFullReverify}" VerticalAlignment="Center" Margin="8,0,10,0" ToolTip="Off (default): only hash files that have never been checked or previously errored, so repeated runs are fast. On: re-check every file, including ones already verified."/>
+            </StackPanel>
+          </Border>
+          <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="18" Margin="0,3,0,3" Padding="3">
+            <StackPanel Orientation="Horizontal">
+              <Button Content="Export Good Roms" Command="{Binding ExportPreferredLibraryCommand}" Style="{StaticResource ChipButton}" ToolTip="Copy every game's preferred, non-excluded version into a folder organized by system. Originals are never moved, renamed, or modified."/>
+              <Button Content="Export Wanted Games" Command="{Binding ExportWantedLibraryCommand}" Style="{StaticResource ChipButton}" ToolTip="Copy only the games you've marked Wanted, using each one's preferred version, into a folder organized by system."/>
+              <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" Style="{StaticResource ChipButton}" ToolTip="Export every indexed copy with its source, status, and hashes"/>
+              <Button Content="Duplicate Report" Command="{Binding ExportDuplicateReportCommand}" Style="{StaticResource ChipButton}" ToolTip="Export a CSV of byte-identical duplicate files and how much disk space could be reclaimed by keeping one copy per group. Read-only - nothing is deleted."/>
+            </StackPanel>
+          </Border>
+        </WrapPanel>
+      </StackPanel>
     </Border>
 
     <Grid Grid.Row="1">
@@ -153,7 +167,7 @@
       </Border>
     </Grid>
 
-    <Border Grid.Row="2" Background="#070D17" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,0">
+    <Border Grid.Row="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,0">
       <Grid VerticalAlignment="Center">
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="420"/></Grid.ColumnDefinitions>
         <StackPanel Grid.Column="0" Orientation="Horizontal">
