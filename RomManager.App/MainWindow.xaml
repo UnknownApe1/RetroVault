@@ -11,8 +11,11 @@
         <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
           <Button Content="Review Duplicate Titles" Command="{Binding ReviewDuplicateTitlesCommand}" ToolTip="Find likely-duplicate game titles across the whole library for manual review and merge"/>
           <Button Content="Clean Up Titles" Command="{Binding CleanUpTitlesCommand}" ToolTip="Review suggested display-name fixes (rank prefixes, catalog names) for manual approval. Your files are never renamed."/>
+          <Button Content="Merge Exact Duplicates" Command="{Binding MergeExactDuplicatesCommand}" ToolTip="Find games that share the exact same title within a system (often after Clean Up Titles) and merge them into one entry, so preferred-copy scoring and exports treat them as a single game."/>
+          <CheckBox Content="Re-verify all" IsChecked="{Binding ForceFullReverify}" VerticalAlignment="Center" Margin="4,0" Foreground="{StaticResource SecondaryTextBrush}" ToolTip="Off (default): only hash files that have never been checked or previously errored, so repeated runs are fast. On: re-check every file, including ones already verified."/>
           <Button Content="Verify Catalog" Command="{Binding VerifyCatalogCommand}" ToolTip="Verify the selected system against trusted checksum catalogs"/>
           <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" ToolTip="Export every indexed copy with its source, status, and hashes"/>
+          <Button Content="Duplicate Report" Command="{Binding ExportDuplicateReportCommand}" ToolTip="Export a CSV of byte-identical duplicate files and how much disk space could be reclaimed by keeping one copy per group. Read-only - nothing is deleted."/>
           <Button Content="Export Good Roms" Command="{Binding ExportPreferredLibraryCommand}" ToolTip="Copy every game's preferred, non-excluded version into a folder organized by system. Originals are never moved, renamed, or modified."/>
           <Button Content="Export Wanted Games" Command="{Binding ExportWantedLibraryCommand}" ToolTip="Copy only the games you've marked Wanted, using each one's preferred version, into a folder organized by system."/>
           <Button Content="Add Folder" Command="{Binding AddFolderCommand}"/>

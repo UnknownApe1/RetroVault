@@ -381,6 +381,111 @@ public sealed class LibraryRepositoryTests : IDisposable
         Assert.Equal(normalizedTitleBefore, game.NormalizedTitle);
     }
 
+    [Fact]
+    public async Task GetDuplicateFileReportAsync_GroupsDuplicateStatusFilesBySha256()
+    {
+        await using var db = CreateContext();
+        var system = new SystemDefinition { Key = "NES", Name = "NES", Manufacturer = "Nintendo" };
+        db.Systems.Add(system);
+        var location = new ScanLocation { Path = "C:\\ROMs" };
+        db.ScanLocations.Add(location);
+        await db.SaveChangesAsync();
+        var game = new Game { CanonicalTitle = "Test Game", SortTitle = "Test Game", NormalizedTitle = "testgame", SystemDefinitionId = system.Id };
+        db.Games.Add(game);
+        await db.SaveChangesAsync();
+        var dupeA = new GameFile { GameId = game.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\A.nes", FileName = "A.nes", Extension = ".nes", Size = 1000, Status = FileStatus.Duplicate };
+        var dupeB = new GameFile { GameId = game.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\B.nes", FileName = "B.nes", Extension = ".nes", Size = 1000, Status = FileStatus.Duplicate };
+        var unique = new GameFile { GameId = game.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\C.nes", FileName = "C.nes", Extension = ".nes", Size = 500, Status = FileStatus.Normal };
+        db.GameFiles.AddRange(dupeA, dupeB, unique);
+        await db.SaveChangesAsync();
+        db.Hashes.AddRange(
+            new FileHash { GameFileId = dupeA.Id, Algorithm = "SHA256", Hash = "same-hash" },
+            new FileHash { GameFileId = dupeB.Id, Algorithm = "SHA256", Hash = "same-hash" },
+            new FileHash { GameFileId = unique.Id, Algorithm = "SHA256", Hash = "other-hash" });
+        await db.SaveChangesAsync();
+
+        var report = await repository.GetDuplicateFileReportAsync(CancellationToken.None);
+
+        Assert.Equal(2, report.Count);
+        Assert.All(report, x => Assert.Equal("same-hash", x.Sha256));
+        Assert.Equal(["A.nes", "B.nes"], report.Select(x => x.FileName).OrderBy(x => x));
+    }
+
+    [Fact]
+    public async Task GetVerificationCandidatesAsync_DefaultSkipsFilesAlreadyVerifiedOrNoMatchOrUnsupportedButRetriesErrors()
+    {
+        await using var db = CreateContext();
+        var system = new SystemDefinition { Key = "NES", Name = "NES", Manufacturer = "Nintendo" };
+        db.Systems.Add(system);
+        var location = new ScanLocation { Path = "C:\\ROMs" };
+        db.ScanLocations.Add(location);
+        await db.SaveChangesAsync();
+        var game = new Game { CanonicalTitle = "Test Game", SortTitle = "Test Game", NormalizedTitle = "testgame", SystemDefinitionId = system.Id };
+        db.Games.Add(game);
+        await db.SaveChangesAsync();
+        db.GameFiles.AddRange(
+            new GameFile { GameId = game.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\Unknown.nes", FileName = "Unknown.nes", Extension = ".nes", Status = FileStatus.Normal, CatalogStatus = CatalogVerificationStatus.Unknown },
+            new GameFile { GameId = game.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\Verified.nes", FileName = "Verified.nes", Extension = ".nes", Status = FileStatus.Normal, CatalogStatus = CatalogVerificationStatus.Verified },
+            new GameFile { GameId = game.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\NoMatch.nes", FileName = "NoMatch.nes", Extension = ".nes", Status = FileStatus.Normal, CatalogStatus = CatalogVerificationStatus.NoMatch },
+            new GameFile { GameId = game.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\Unsupported.nes", FileName = "Unsupported.nes", Extension = ".nes", Status = FileStatus.Normal, CatalogStatus = CatalogVerificationStatus.Unsupported },
+            new GameFile { GameId = game.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\Errored.nes", FileName = "Errored.nes", Extension = ".nes", Status = FileStatus.Normal, CatalogStatus = CatalogVerificationStatus.Error });
+        await db.SaveChangesAsync();
+
+        var incremental = await repository.GetVerificationCandidatesAsync(null, includeAlreadyChecked: false, CancellationToken.None);
+        var full = await repository.GetVerificationCandidatesAsync(null, includeAlreadyChecked: true, CancellationToken.None);
+
+        Assert.Equal(["Errored.nes", "Unknown.nes"], incremental.Select(x => x.FileName).OrderBy(x => x));
+        Assert.Equal(5, full.Count);
+    }
+
+    [Fact]
+    public async Task GetExactTitleDuplicateGroupsAsync_GroupsGamesSharingASystemAndExactCanonicalTitle()
+    {
+        await using var db = CreateContext();
+        var system = new SystemDefinition { Key = "SNES", Name = "Super Nintendo", Manufacturer = "Nintendo" };
+        db.Systems.Add(system);
+        await db.SaveChangesAsync();
+        db.Games.AddRange(
+            new Game { CanonicalTitle = "Bubsy", SortTitle = "Bubsy", NormalizedTitle = "bubsy1", SystemDefinitionId = system.Id },
+            new Game { CanonicalTitle = "Bubsy", SortTitle = "Bubsy", NormalizedTitle = "bubsy2", SystemDefinitionId = system.Id },
+            new Game { CanonicalTitle = "Chrono Trigger", SortTitle = "Chrono Trigger", NormalizedTitle = "chronotrigger", SystemDefinitionId = system.Id });
+        await db.SaveChangesAsync();
+
+        var groups = await repository.GetExactTitleDuplicateGroupsAsync(CancellationToken.None);
+
+        var group = Assert.Single(groups);
+        Assert.Equal("Bubsy", group.Title);
+        Assert.Equal("Super Nintendo", group.SystemName);
+        Assert.Equal(2, group.GameIds.Count);
+    }
+
+    [Fact]
+    public async Task MergeExactTitleDuplicateGroupAsync_KeepsTheCopyWithTheMostFilesAndReassignsTheRest()
+    {
+        await using var db = CreateContext();
+        var system = new SystemDefinition { Key = "SNES", Name = "Super Nintendo", Manufacturer = "Nintendo" };
+        db.Systems.Add(system);
+        var location = new ScanLocation { Path = "C:\\ROMs" };
+        db.ScanLocations.Add(location);
+        await db.SaveChangesAsync();
+        var smallCopy = new Game { CanonicalTitle = "Bubsy", SortTitle = "Bubsy", NormalizedTitle = "bubsy1", SystemDefinitionId = system.Id };
+        var bigCopy = new Game { CanonicalTitle = "Bubsy", SortTitle = "Bubsy", NormalizedTitle = "bubsy2", SystemDefinitionId = system.Id };
+        db.Games.AddRange(smallCopy, bigCopy);
+        await db.SaveChangesAsync();
+        db.GameFiles.Add(new GameFile { GameId = smallCopy.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\Bubsy1.smc", FileName = "Bubsy1.smc", Extension = ".smc", Status = FileStatus.Normal });
+        db.GameFiles.AddRange(
+            new GameFile { GameId = bigCopy.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\Bubsy2.smc", FileName = "Bubsy2.smc", Extension = ".smc", Status = FileStatus.Normal },
+            new GameFile { GameId = bigCopy.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\Bubsy2 (Alt).smc", FileName = "Bubsy2 (Alt).smc", Extension = ".smc", Status = FileStatus.Normal });
+        await db.SaveChangesAsync();
+
+        await repository.MergeExactTitleDuplicateGroupAsync([smallCopy.Id, bigCopy.Id], CancellationToken.None);
+
+        await using var verify = CreateContext();
+        Assert.False(await verify.Games.AnyAsync(x => x.Id == smallCopy.Id));
+        Assert.True(await verify.Games.AnyAsync(x => x.Id == bigCopy.Id));
+        Assert.Equal(3, await verify.GameFiles.CountAsync(x => x.GameId == bigCopy.Id));
+    }
+
     private sealed class TestDbContextFactory(DbContextOptions<RomManagerDbContext> options) : IDbContextFactory<RomManagerDbContext>
     {
         public RomManagerDbContext CreateDbContext() => new(options);

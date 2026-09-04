@@ -24,7 +24,7 @@ public sealed class MainViewModel : ObservableObject
     private CancellationTokenSource? refreshCancellation;
     private CancellationTokenSource? thumbnailCancellation;
     private string searchText = "", statusText = "Ready", currentPath = "";
-    private bool isScanning, isInitialized;
+    private bool isScanning, isInitialized, forceFullReverify;
     private SystemDefinition? selectedSystem;
     private LibraryFilterOption? selectedFilter;
     private GameListItem? selectedGame;
@@ -51,6 +51,8 @@ public sealed class MainViewModel : ObservableObject
         VerifyCatalogCommand = new AsyncCommand(VerifyCatalogAsync, () => !IsScanning);
         ReviewDuplicateTitlesCommand = new AsyncCommand(ReviewDuplicateTitlesAsync, () => !IsScanning);
         CleanUpTitlesCommand = new AsyncCommand(CleanUpTitlesAsync, () => !IsScanning);
+        MergeExactDuplicatesCommand = new AsyncCommand(MergeExactDuplicatesAsync, () => !IsScanning);
+        ExportDuplicateReportCommand = new AsyncCommand(ExportDuplicateReportAsync, () => !IsScanning);
         PreferCopyCommand = new AsyncCommand(TogglePreferredCopyAsync, () => SelectedFile is not null && !IsScanning);
         ExcludeCopyCommand = new AsyncCommand(ToggleExcludedCopyAsync, () => SelectedFile is not null && !IsScanning);
         ExcludeNonPreferredCommand = new AsyncCommand(ExcludeNonPreferredAsync, () => SelectedGames.Count > 0 && !IsScanning);
@@ -92,6 +94,8 @@ public sealed class MainViewModel : ObservableObject
     public AsyncCommand VerifyCatalogCommand { get; }
     public AsyncCommand ReviewDuplicateTitlesCommand { get; }
     public AsyncCommand CleanUpTitlesCommand { get; }
+    public AsyncCommand MergeExactDuplicatesCommand { get; }
+    public AsyncCommand ExportDuplicateReportCommand { get; }
     public AsyncCommand PreferCopyCommand { get; }
     public AsyncCommand ExcludeCopyCommand { get; }
     public AsyncCommand ExcludeNonPreferredCommand { get; }
@@ -111,9 +115,10 @@ public sealed class MainViewModel : ObservableObject
     public string? ThumbnailPath { get => thumbnailPath; private set => Set(ref thumbnailPath, value); }
     public string SelectedGamesCountText => SelectedGames.Count == 0 ? "" : $"{SelectedGames.Count:N0} selected";
     public string SearchText { get => searchText; set { if (Set(ref searchText, value) && isInitialized) _ = RefreshLibraryAsync(250); } }
+    public bool ForceFullReverify { get => forceFullReverify; set => Set(ref forceFullReverify, value); }
     public string StatusText { get => statusText; private set => Set(ref statusText, value); }
     public string CurrentPath { get => currentPath; private set => Set(ref currentPath, value); }
-    public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); ExportCsvCommand.Refresh(); VerifyCatalogCommand.Refresh(); ReviewDuplicateTitlesCommand.Refresh(); CleanUpTitlesCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); ExportPreferredLibraryCommand.Refresh(); ExportWantedLibraryCommand.Refresh(); MarkWantedCommand.Refresh(); UnmarkWantedCommand.Refresh(); } } }
+    public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); ExportCsvCommand.Refresh(); VerifyCatalogCommand.Refresh(); ReviewDuplicateTitlesCommand.Refresh(); CleanUpTitlesCommand.Refresh(); MergeExactDuplicatesCommand.Refresh(); ExportDuplicateReportCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); ExportPreferredLibraryCommand.Refresh(); ExportWantedLibraryCommand.Refresh(); MarkWantedCommand.Refresh(); UnmarkWantedCommand.Refresh(); } } }
     public LibraryCounts Counts { get => counts; private set => Set(ref counts, value); }
     public SystemDefinition? SelectedSystem { get => selectedSystem; set { if (Set(ref selectedSystem, value) && isInitialized) _ = RefreshLibraryAsync(); } }
     public LibraryFilterOption? SelectedFilter { get => selectedFilter; set { if (Set(ref selectedFilter, value) && isInitialized) _ = RefreshLibraryAsync(); } }
@@ -221,7 +226,8 @@ public sealed class MainViewModel : ObservableObject
     private async Task VerifyCatalogAsync()
     {
         var systemKey = SelectedSystem is { Id: > 0 } ? SelectedSystem.Key : null;
-        if (systemKey is null && MessageBox.Show("Verify every supported system? This reads each ROM in full and may take several hours for a large library. You can instead select one system first.", "Verify full library", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        var scope = ForceFullReverify ? "already-verified files included" : "already-checked files skipped";
+        if (systemKey is null && MessageBox.Show($"Verify every supported system ({scope})? This reads each ROM in full and can take a while for a large library the first time. You can instead select one system first.", "Verify full library", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
 
         scanCancellation = new();
         IsScanning = true;
@@ -233,7 +239,7 @@ public sealed class MainViewModel : ObservableObject
         });
         try
         {
-            var result = await Task.Run(() => catalogVerification.VerifyAsync(systemKey, progress, scanCancellation.Token), scanCancellation.Token);
+            var result = await Task.Run(() => catalogVerification.VerifyAsync(systemKey, ForceFullReverify, progress, scanCancellation.Token), scanCancellation.Token);
             StatusText = $"Catalog verification complete: {result.Verified:N0} verified, {result.NoMatch:N0} unmatched, {result.Unsupported:N0} unsupported, {result.Errors:N0} errors";
         }
         catch (OperationCanceledException) { StatusText = "Catalog verification canceled; completed results were saved"; }
@@ -275,6 +281,20 @@ public sealed class MainViewModel : ObservableObject
             if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
         }
         catch (Exception ex) { logger.LogError(ex, "Could not scan for title cleanup suggestions"); StatusText = $"Title cleanup scan failed: {ex.Message}"; }
+    }
+    private async Task MergeExactDuplicatesAsync()
+    {
+        StatusText = "Scanning for exact-title duplicates...";
+        try
+        {
+            var groups = await Task.Run(() => repository.GetExactTitleDuplicateGroupsAsync(CancellationToken.None));
+            var window = new ExactTitleMergeWindow { Owner = Application.Current.MainWindow, DataContext = new ExactTitleMergeViewModel(repository, groups) };
+            window.ShowDialog();
+            StatusText = "Ready";
+            await RefreshLibraryAsync();
+            if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
+        }
+        catch (Exception ex) { logger.LogError(ex, "Could not scan for exact-title duplicates"); StatusText = $"Exact-title duplicate scan failed: {ex.Message}"; }
     }
     private async Task LoadThumbnailAsync()
     {
@@ -374,6 +394,46 @@ public sealed class MainViewModel : ObservableObject
         }
         catch (Exception ex) { logger.LogError(ex, "Could not update wanted status"); StatusText = $"Could not update wanted status: {ex.Message}"; }
     }
+    private async Task ExportDuplicateReportAsync()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export duplicate-file report",
+            Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+            DefaultExt = ".csv",
+            AddExtension = true,
+            FileName = $"rom-duplicates-{DateTime.Now:yyyyMMdd-HHmmss}.csv"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        StatusText = "Scanning for duplicate files...";
+        try
+        {
+            var rows = await Task.Run(() => repository.GetDuplicateFileReportAsync(CancellationToken.None));
+            await Task.Run(() => WriteDuplicateReportCsvAsync(dialog.FileName, rows, CancellationToken.None));
+            var groups = rows.GroupBy(x => x.Sha256).ToArray();
+            var reclaimable = groups.Sum(g => (long)(g.Count() - 1) * g.First().Size);
+            StatusText = $"Exported {rows.Count:N0} duplicate files across {groups.Length:N0} groups to {dialog.FileName} - {reclaimable / (1024.0 * 1024 * 1024):N1} GB reclaimable if you keep one copy per group";
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not export the duplicate-file report");
+            StatusText = $"Duplicate report export failed: {ex.Message}";
+        }
+    }
+
+    private static async Task WriteDuplicateReportCsvAsync(string path, IReadOnlyList<DuplicateFileRow> rows, CancellationToken ct)
+    {
+        await using var writer = new StreamWriter(path, false, new UTF8Encoding(true));
+        await writer.WriteLineAsync("SHA-256,System,Game Title,File Name,Full Path,Size Bytes".AsMemory(), ct);
+        foreach (var row in rows)
+        {
+            ct.ThrowIfCancellationRequested();
+            var values = new object?[] { row.Sha256, row.System, row.GameTitle, row.FileName, row.FullPath, row.Size };
+            await writer.WriteLineAsync(string.Join(',', values.Select(CsvValue)).AsMemory(), ct);
+        }
+    }
+
     private async Task ExportLibraryCsvAsync()
     {
         var dialog = new SaveFileDialog

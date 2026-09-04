@@ -283,11 +283,16 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
                 x.Hashes.Where(h => h.Algorithm == "SHA1").Select(h => h.Hash).FirstOrDefault())).ToListAsync(ct);
     }
 
-    public async Task<IReadOnlyList<VerificationCandidate>> GetVerificationCandidatesAsync(string? systemKey, CancellationToken ct)
+    public async Task<IReadOnlyList<VerificationCandidate>> GetVerificationCandidatesAsync(string? systemKey, bool includeAlreadyChecked, CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
         var query = db.GameFiles.AsNoTracking().Where(x => x.Game != null && x.Status != FileStatus.Missing);
         if (!string.IsNullOrWhiteSpace(systemKey)) query = query.Where(x => x.Game!.SystemDefinition!.Key == systemKey);
+        // Verified/NoMatch/Unsupported are stable outcomes that don't change unless the catalog itself changes,
+        // so a default run skips them and only spends time hashing files that have never been checked (or
+        // previously errored, which is worth retrying). This is what makes repeated/incremental runs cheap -
+        // without it, re-running "Verify Catalog" always re-hashes the entire library from scratch.
+        if (!includeAlreadyChecked) query = query.Where(x => x.CatalogStatus == CatalogVerificationStatus.Unknown || x.CatalogStatus == CatalogVerificationStatus.Error);
         return await query.OrderBy(x => x.Game!.SystemDefinition!.Key).ThenBy(x => x.GameId).ThenBy(x => x.FullPath)
             .Select(x => new VerificationCandidate(x.Id, x.GameId!.Value, x.Game!.SystemDefinition!.Key, x.FullPath, x.FileName, x.Extension, x.Size, x.Status, x.Region, x.Revision))
             .ToListAsync(ct);
@@ -502,6 +507,63 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
         game.SortTitle = CreateSortTitle(newTitle);
         await db.SaveChangesAsync(ct);
         gamesByKey = null;
+    }
+
+    public async Task<IReadOnlyList<ExactTitleDuplicateGroup>> GetExactTitleDuplicateGroupsAsync(CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var games = await db.Games.AsNoTracking().Select(x => new
+        {
+            x.Id,
+            x.CanonicalTitle,
+            SystemName = x.SystemDefinition!.Name,
+            FileCount = x.Files.Count(f => f.Status != FileStatus.Missing)
+        }).ToListAsync(ct);
+        return games.GroupBy(x => (x.SystemName, x.CanonicalTitle))
+            .Where(g => g.Count() > 1)
+            .Select(g => new ExactTitleDuplicateGroup(g.Key.SystemName, g.Key.CanonicalTitle, g.Sum(x => x.FileCount), g.Select(x => x.Id).ToList()))
+            .OrderBy(x => x.SystemName).ThenBy(x => x.Title, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    // The "keep" game is whichever copy already has the most files (ties broken by lowest Id, for
+    // determinism) - an exact-title match means every candidate is equally "correct" as the surviving
+    // Game row, so this is just a stable pick rather than a quality judgement; RecalculatePreferredCopiesAsync
+    // (via ApplyPreferredSelection below) is what actually decides which physical file gets exported.
+    public async Task MergeExactTitleDuplicateGroupAsync(IReadOnlyList<long> gameIds, CancellationToken ct)
+    {
+        if (gameIds.Count < 2) return;
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var games = await db.Games.Where(x => gameIds.Contains(x.Id))
+            .Select(x => new { x.Id, FileCount = x.Files.Count(f => f.Status != FileStatus.Missing) })
+            .ToListAsync(ct);
+        var keepId = games.OrderByDescending(x => x.FileCount).ThenBy(x => x.Id).First().Id;
+        foreach (var mergeId in gameIds.Where(id => id != keepId))
+        {
+            await db.GameFiles.Where(x => x.GameId == mergeId).ExecuteUpdateAsync(s => s.SetProperty(x => x.GameId, keepId), ct);
+            await db.FileGroups.Where(x => x.GameId == mergeId).ExecuteUpdateAsync(s => s.SetProperty(x => x.GameId, keepId), ct);
+            await db.Games.Where(x => x.Id == mergeId).ExecuteDeleteAsync(ct);
+        }
+        var files = await db.GameFiles.Where(x => x.GameId == keepId).ToListAsync(ct);
+        ApplyPreferredSelection(files);
+        await db.SaveChangesAsync(ct);
+        gamesByKey = null;
+    }
+
+    public async Task<IReadOnlyList<DuplicateFileRow>> GetDuplicateFileReportAsync(CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        // MarkExactDuplicatesAsync flags every file sharing a SHA-256 (not just the "extra" copies), so
+        // grouping by hash here reconstructs each duplicate set and lets the caller compute reclaimable
+        // space as (count - 1) * size per group - one copy of each set is still needed.
+        var hashByFileId = await db.Hashes.Where(x => x.Algorithm == "SHA256").ToDictionaryAsync(x => x.GameFileId, x => x.Hash, ct);
+        var files = await db.GameFiles.AsNoTracking().Where(x => x.Status == FileStatus.Duplicate && x.Game != null)
+            .Select(x => new { x.Id, x.FullPath, x.FileName, x.Size, GameTitle = x.Game!.CanonicalTitle, SystemName = x.Game.SystemDefinition!.Name })
+            .ToListAsync(ct);
+        return files.Where(f => hashByFileId.ContainsKey(f.Id))
+            .Select(f => new DuplicateFileRow(hashByFileId[f.Id], f.SystemName, f.GameTitle, f.FileName, f.FullPath, f.Size))
+            .OrderBy(x => x.Sha256, StringComparer.Ordinal).ThenBy(x => x.FullPath, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public async Task<IReadOnlyList<SystemDefinition>> GetSystemsAsync(CancellationToken ct)

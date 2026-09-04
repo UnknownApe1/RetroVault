@@ -17,7 +17,7 @@ public interface IHashService
 }
 public interface ICatalogVerificationService
 {
-    Task<CatalogVerificationResult> VerifyAsync(string? systemKey, IProgress<CatalogVerificationProgress>? progress, CancellationToken cancellationToken);
+    Task<CatalogVerificationResult> VerifyAsync(string? systemKey, bool includeAlreadyChecked, IProgress<CatalogVerificationProgress>? progress, CancellationToken cancellationToken);
 }
 public interface IThumbnailService
 {
@@ -55,7 +55,7 @@ public interface ILibraryRepository
     Task<Game?> GetGameDetailsAsync(long id, CancellationToken cancellationToken);
     Task<LibraryCounts> GetCountsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<LibraryExportRow>> GetLibraryExportRowsAsync(CancellationToken cancellationToken);
-    Task<IReadOnlyList<VerificationCandidate>> GetVerificationCandidatesAsync(string? systemKey, CancellationToken cancellationToken);
+    Task<IReadOnlyList<VerificationCandidate>> GetVerificationCandidatesAsync(string? systemKey, bool includeAlreadyChecked, CancellationToken cancellationToken);
     Task ApplyCatalogVerificationAsync(IReadOnlyList<CatalogVerificationUpdate> updates, CancellationToken cancellationToken);
     Task RecalculatePreferredCopiesAsync(string? systemKey, CancellationToken cancellationToken);
     Task SetCopyPreferenceAsync(long fileId, bool manuallyPreferred, bool excluded, CancellationToken cancellationToken);
@@ -67,6 +67,9 @@ public interface ILibraryRepository
     Task SetGamesWantedAsync(IReadOnlyList<long> gameIds, bool wanted, CancellationToken cancellationToken);
     Task<IReadOnlyList<TitleCleanupCandidate>> GetTitleCleanupCandidatesAsync(CancellationToken cancellationToken);
     Task ApplyTitleCleanupAsync(long gameId, string newTitle, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ExactTitleDuplicateGroup>> GetExactTitleDuplicateGroupsAsync(CancellationToken cancellationToken);
+    Task MergeExactTitleDuplicateGroupAsync(IReadOnlyList<long> gameIds, CancellationToken cancellationToken);
+    Task<IReadOnlyList<DuplicateFileRow>> GetDuplicateFileReportAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<SystemDefinition>> GetSystemsAsync(CancellationToken cancellationToken);
 }
 

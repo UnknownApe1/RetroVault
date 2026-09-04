@@ -80,6 +80,10 @@ public sealed record LibraryExportOperationResult(long Copied, long Skipped, lon
 
 public sealed record TitleCleanupCandidate(long GameId, string SystemName, string CurrentTitle, string SuggestedTitle, string Reason);
 
+public sealed record ExactTitleDuplicateGroup(string SystemName, string Title, int TotalFiles, IReadOnlyList<long> GameIds);
+
+public sealed record DuplicateFileRow(string Sha256, string System, string GameTitle, string FileName, string FullPath, long Size);
+
 public sealed class IncompleteFileEnumerationException(string rootPath, int errorCount)
     : IOException($"The scan could not read {errorCount:N0} path(s) under {rootPath}. Indexed changes were saved, but missing-file detection was skipped for safety.")
 {

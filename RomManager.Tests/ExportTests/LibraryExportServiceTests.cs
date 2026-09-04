@@ -76,6 +76,9 @@ public sealed class LibraryExportServiceTests : IDisposable
         public Task SetGamesWantedAsync(IReadOnlyList<long> gameIds, bool wanted, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<TitleCleanupCandidate>> GetTitleCleanupCandidatesAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task ApplyTitleCleanupAsync(long gameId, string newTitle, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<ExactTitleDuplicateGroup>> GetExactTitleDuplicateGroupsAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task MergeExactTitleDuplicateGroupAsync(IReadOnlyList<long> gameIds, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<DuplicateFileRow>> GetDuplicateFileReportAsync(CancellationToken ct) => throw new NotSupportedException();
 
         public Task InitializeAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<ScanLocation>> GetScanLocationsAsync(bool enabledOnly, CancellationToken ct) => throw new NotSupportedException();
@@ -100,7 +103,7 @@ public sealed class LibraryExportServiceTests : IDisposable
         public Task<Game?> GetGameDetailsAsync(long id, CancellationToken ct) => throw new NotSupportedException();
         public Task<LibraryCounts> GetCountsAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<LibraryExportRow>> GetLibraryExportRowsAsync(CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<VerificationCandidate>> GetVerificationCandidatesAsync(string? systemKey, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<VerificationCandidate>> GetVerificationCandidatesAsync(string? systemKey, bool includeAlreadyChecked, CancellationToken ct) => throw new NotSupportedException();
         public Task ApplyCatalogVerificationAsync(IReadOnlyList<CatalogVerificationUpdate> updates, CancellationToken ct) => throw new NotSupportedException();
         public Task RecalculatePreferredCopiesAsync(string? systemKey, CancellationToken ct) => throw new NotSupportedException();
         public Task SetCopyPreferenceAsync(long fileId, bool manuallyPreferred, bool excluded, CancellationToken ct) => throw new NotSupportedException();

@@ -17,9 +17,9 @@ public sealed class LibretroCatalogVerificationService(IFileSystem fileSystem, I
     private static readonly uint[] CrcTable = CreateCrcTable();
     private static readonly IReadOnlyDictionary<string, CatalogDefinition> Catalogs = CreateCatalogs();
 
-    public async Task<CatalogVerificationResult> VerifyAsync(string? systemKey, IProgress<CatalogVerificationProgress>? progress, CancellationToken ct)
+    public async Task<CatalogVerificationResult> VerifyAsync(string? systemKey, bool includeAlreadyChecked, IProgress<CatalogVerificationProgress>? progress, CancellationToken ct)
     {
-        var candidates = await repository.GetVerificationCandidatesAsync(systemKey, ct);
+        var candidates = await repository.GetVerificationCandidatesAsync(systemKey, includeAlreadyChecked, ct);
         var groups = candidates.GroupBy(x => x.SystemKey).Where(x => systemKey is null || x.Key == systemKey).ToArray();
         var systemsComplete = 0;
         long filesComplete = 0, verified = 0, noMatch = 0, unsupported = 0, errors = 0;
