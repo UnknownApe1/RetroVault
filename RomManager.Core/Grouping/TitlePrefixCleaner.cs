@@ -18,6 +18,28 @@ public static partial class TitlePrefixCleaner
         return remainder.Length == 0 ? null : remainder;
     }
 
+    // Same shape as RankPrefix but without the leading-zero requirement, so it also catches a collection
+    // numbered "100 ", "101 ", ... with no padding on the low end. This is deliberately over-eager (it would
+    // also match a real title like "1080 Snowboarding"), so callers should only use it once they've confirmed,
+    // via HasWidespreadRankPrefixConvention, that most titles in the same system share this leading-digit shape.
+    [GeneratedRegex(@"^\d{2,5}[\s\-]+")]
+    private static partial Regex AnyLeadingNumberPrefix();
+
+    public static string? TryStripAnyLeadingNumberPrefix(string title)
+    {
+        var match = AnyLeadingNumberPrefix().Match(title);
+        if (!match.Success) return null;
+        var remainder = title[match.Length..].Trim();
+        return remainder.Length == 0 ? null : remainder;
+    }
+
+    // A system-wide numbering convention (every game prefixed with its catalog rank) is common in these
+    // messy romsets, and once confirmed for a system it's safe to strip the prefix even without a leading
+    // zero, since a handful of coincidentally-numbered real titles ("1080 Snowboarding") is a vanishingly
+    // small fraction of a whole system that's mostly "000 ...", "001 ...", "100 ...", "101 ...".
+    public static bool HasWidespreadRankPrefixConvention(int matchingTitles, int totalTitles) =>
+        matchingTitles >= 5 && matchingTitles >= totalTitles * 0.3;
+
     [GeneratedRegex(@"\s*[\(\[][^()\[\]]*[\)\]]\s*$")]
     private static partial Regex TrailingTag();
 

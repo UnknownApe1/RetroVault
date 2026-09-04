@@ -466,6 +466,9 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
             VerifiedCatalogName = x.Files.Where(f => f.CatalogStatus == CatalogVerificationStatus.Verified && f.CatalogName != null)
                 .OrderByDescending(f => f.IsPreferred).Select(f => f.CatalogName).FirstOrDefault()
         }).ToListAsync(ct);
+        var rankPrefixedBySystem = games.GroupBy(x => x.SystemName)
+            .ToDictionary(g => g.Key, g => TitlePrefixCleaner.HasWidespreadRankPrefixConvention(
+                g.Count(x => TitlePrefixCleaner.TryStripAnyLeadingNumberPrefix(x.CanonicalTitle) is not null), g.Count()));
         var results = new List<TitleCleanupCandidate>();
         foreach (var game in games)
         {
@@ -477,7 +480,9 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
             }
             else
             {
-                var stripped = TitlePrefixCleaner.TryStripRankPrefix(game.CanonicalTitle);
+                var stripped = rankPrefixedBySystem[game.SystemName]
+                    ? TitlePrefixCleaner.TryStripAnyLeadingNumberPrefix(game.CanonicalTitle)
+                    : TitlePrefixCleaner.TryStripRankPrefix(game.CanonicalTitle);
                 if (stripped is null) continue;
                 suggested = TitlePrefixCleaner.StripTrailingTags(stripped).Trim();
                 reason = "Removes numeric catalog-rank prefix";

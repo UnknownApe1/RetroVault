@@ -344,6 +344,29 @@ public sealed class LibraryRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetTitleCleanupCandidatesAsync_StripsAnUnpaddedRankPrefixWhenTheWholeSystemSharesTheConvention()
+    {
+        await using var db = CreateContext();
+        var system = new SystemDefinition { Key = "SNES", Name = "Super Nintendo", Manufacturer = "Nintendo" };
+        db.Systems.Add(system);
+        await db.SaveChangesAsync();
+        db.Games.AddRange(
+            new Game { CanonicalTitle = "100 Bubsy in Claws Encounters of the Furred Kind", SortTitle = "100 Bubsy", NormalizedTitle = "100bubsy", SystemDefinitionId = system.Id },
+            new Game { CanonicalTitle = "101 Bugs Bunny in Rabbit Rampage", SortTitle = "101 Bugs Bunny", NormalizedTitle = "101bugsbunny", SystemDefinitionId = system.Id },
+            new Game { CanonicalTitle = "102 Captain America and the Avengers", SortTitle = "102 Captain America", NormalizedTitle = "102captainamerica", SystemDefinitionId = system.Id },
+            new Game { CanonicalTitle = "103 Captain Commando", SortTitle = "103 Captain Commando", NormalizedTitle = "103captaincommando", SystemDefinitionId = system.Id },
+            new Game { CanonicalTitle = "104 Captain Tsubasa 4", SortTitle = "104 Captain Tsubasa 4", NormalizedTitle = "104captaintsubasa4", SystemDefinitionId = system.Id },
+            new Game { CanonicalTitle = "Chrono Trigger", SortTitle = "Chrono Trigger", NormalizedTitle = "chronotrigger", SystemDefinitionId = system.Id });
+        await db.SaveChangesAsync();
+
+        var candidates = await repository.GetTitleCleanupCandidatesAsync(CancellationToken.None);
+
+        Assert.Equal(5, candidates.Count);
+        Assert.Contains(candidates, x => x.CurrentTitle == "100 Bubsy in Claws Encounters of the Furred Kind" && x.SuggestedTitle == "Bubsy in Claws Encounters of the Furred Kind");
+        Assert.DoesNotContain(candidates, x => x.CurrentTitle == "Chrono Trigger");
+    }
+
+    [Fact]
     public async Task ApplyTitleCleanupAsync_UpdatesTheCanonicalTitleButLeavesTheNormalizedTitleUnchanged()
     {
         var (gameId, _, _) = await SeedTwoCopiesAsync();
