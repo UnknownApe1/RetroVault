@@ -116,6 +116,8 @@
             <GridViewColumn Header="REGION" Width="80" DisplayMemberBinding="{Binding Region}"/>
             <GridViewColumn Header="★" Width="30" DisplayMemberBinding="{Binding WantedText}"/>
             <GridViewColumn Header="FILES" Width="65" DisplayMemberBinding="{Binding FileCount}"/>
+            <GridViewColumn Header="SIZE" Width="75" DisplayMemberBinding="{Binding SizeText}"/>
+            <GridViewColumn Header="DUPLICATES" Width="90" DisplayMemberBinding="{Binding DuplicateText}"/>
             <GridViewColumn Header="VERIFIED" Width="80" DisplayMemberBinding="{Binding VerifiedCount}"/>
             <GridViewColumn Header="STATUS" Width="95" DisplayMemberBinding="{Binding WorstStatus}"/>
           </GridView></ListView.View>

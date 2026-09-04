@@ -240,10 +240,11 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
             MissingCount = x.Files.Count(f => f.Status == FileStatus.Missing),
             PreferredCatalogName = x.Files.Where(f => f.IsPreferred).Select(f => f.CatalogName).FirstOrDefault(),
             PreferredRegion = x.Files.OrderByDescending(f => f.IsPreferred).Select(f => f.Region).FirstOrDefault(),
+            TotalSizeBytes = x.Files.Where(f => f.Status != FileStatus.Missing).Sum(f => (long?)f.Size) ?? 0,
             x.IsWanted
         }).ToListAsync(ct);
         return rows.Select(x => new GameSummary(x.Id, x.Title, x.System, x.SystemKey, x.FileCount, x.DuplicateCount, x.VerifiedCount,
-            x.MissingCount > 0 ? FileStatus.Missing : x.DuplicateCount > 0 ? FileStatus.Duplicate : FileStatus.Normal, x.PreferredCatalogName, x.PreferredRegion, x.IsWanted)).ToList();
+            x.MissingCount > 0 ? FileStatus.Missing : x.DuplicateCount > 0 ? FileStatus.Duplicate : FileStatus.Normal, x.PreferredCatalogName, x.PreferredRegion, x.TotalSizeBytes, x.IsWanted)).ToList();
     }
 
     public async Task<Game?> GetGameDetailsAsync(long id, CancellationToken ct)

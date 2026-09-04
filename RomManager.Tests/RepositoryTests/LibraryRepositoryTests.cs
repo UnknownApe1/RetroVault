@@ -192,6 +192,29 @@ public sealed class LibraryRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchGamesAsync_TotalSizeBytesSumsAllNonMissingCopiesButExcludesMissingOnes()
+    {
+        await using var db = CreateContext();
+        var system = new SystemDefinition { Key = "NES", Name = "NES", Manufacturer = "Nintendo" };
+        db.Systems.Add(system);
+        var location = new ScanLocation { Path = "C:\\ROMs" };
+        db.ScanLocations.Add(location);
+        await db.SaveChangesAsync();
+        var game = new Game { CanonicalTitle = "Test Game", SortTitle = "Test Game", NormalizedTitle = "testgame", SystemDefinitionId = system.Id };
+        db.Games.Add(game);
+        await db.SaveChangesAsync();
+        db.GameFiles.AddRange(
+            new GameFile { GameId = game.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\A.nes", FileName = "A.nes", Extension = ".nes", Size = 1000, Status = FileStatus.Normal },
+            new GameFile { GameId = game.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\B.nes", FileName = "B.nes", Extension = ".nes", Size = 2000, Status = FileStatus.Normal },
+            new GameFile { GameId = game.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\C.nes", FileName = "C.nes", Extension = ".nes", Size = 5000, Status = FileStatus.Missing });
+        await db.SaveChangesAsync();
+
+        var results = await repository.SearchGamesAsync(null, null, LibraryViewFilter.All, CancellationToken.None);
+
+        Assert.Equal(3000, Assert.Single(results).TotalSizeBytes);
+    }
+
+    [Fact]
     public async Task GetPreferredExportFilesAsync_ReturnsOnlyThePreferredCopy()
     {
         await SeedTwoCopiesAsync();
