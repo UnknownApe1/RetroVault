@@ -33,12 +33,15 @@ public static partial class TitlePrefixCleaner
         return remainder.Length == 0 ? null : remainder;
     }
 
-    // A system-wide numbering convention (every game prefixed with its catalog rank) is common in these
-    // messy romsets, and once confirmed for a system it's safe to strip the prefix even without a leading
-    // zero, since a handful of coincidentally-numbered real titles ("1080 Snowboarding") is a vanishingly
-    // small fraction of a whole system that's mostly "000 ...", "001 ...", "100 ...", "101 ...".
+    // A rank-prefix convention used by even one romset mixed into a system is enough to trust the pattern —
+    // deliberately a raw count, not a share of the system's total games. A large system (e.g. thousands of
+    // SNES entries merged from several sources) can have hundreds of consistently-prefixed titles from one
+    // romset diluted well under any reasonable percentage by unrelated, unprefixed entries from another
+    // source; requiring a share of the whole system let that dilution suppress the very convention it was
+    // meant to detect. Five titles that all match "<2-5 digits><space or dash>Title" is already implausible
+    // to occur by coincidence among real numbered titles ("1080 Snowboarding", "007").
     public static bool HasWidespreadRankPrefixConvention(int matchingTitles, int totalTitles) =>
-        matchingTitles >= 5 && matchingTitles >= totalTitles * 0.3;
+        matchingTitles >= 5;
 
     [GeneratedRegex(@"\s*[\(\[][^()\[\]]*[\)\]]\s*$")]
     private static partial Regex TrailingTag();

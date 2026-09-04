@@ -490,7 +490,7 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
             if (suggested.Length == 0 || suggested == game.CanonicalTitle) continue;
             results.Add(new TitleCleanupCandidate(game.Id, game.SystemName, game.CanonicalTitle, suggested, reason));
         }
-        return results.OrderBy(x => x.SystemName).ThenBy(x => x.CurrentTitle, StringComparer.OrdinalIgnoreCase).Take(1000).ToList();
+        return results.OrderBy(x => x.SystemName).ThenBy(x => x.CurrentTitle, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     public async Task ApplyTitleCleanupAsync(long gameId, string newTitle, CancellationToken ct)
