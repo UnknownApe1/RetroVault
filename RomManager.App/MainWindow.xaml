@@ -59,7 +59,7 @@
             <RowDefinition Height="135"/><RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
           <TextBlock Grid.Row="0" Text="SYSTEMS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource SecondaryTextBrush}" Margin="5,2,0,7"/>
-          <ListBox Grid.Row="1" ItemsSource="{Binding Systems}" SelectedItem="{Binding SelectedSystem}" DisplayMemberPath="Name"
+          <ListBox Grid.Row="1" ItemsSource="{Binding Systems}" SelectedItem="{Binding SelectedSystem}" DisplayMemberPath="DisplayText"
                    ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.CanContentScroll="True"/>
           <Border Grid.Row="2" Height="1" Background="{StaticResource BorderBrush}" Margin="0,11,0,11"/>
           <TextBlock Grid.Row="3" Text="SCAN LOCATIONS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource SecondaryTextBrush}" Margin="5,0,0,7"/>

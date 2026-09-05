@@ -535,6 +535,26 @@ public sealed class LibraryRepositoryTests : IDisposable
         Assert.Equal(3, await verify.GameFiles.CountAsync(x => x.GameId == bigCopy.Id));
     }
 
+    [Fact]
+    public async Task GetGameCountsBySystemAsync_CountsDistinctGamesNotFilesSoDuplicateCopiesDoNotInflateIt()
+    {
+        // SeedTwoCopiesAsync creates ONE game with TWO files (a USA and a Japan copy); the count must
+        // reflect the one game, not the two file rows.
+        await SeedTwoCopiesAsync();
+        int systemId;
+        await using (var db = CreateContext())
+        {
+            var system = await db.Systems.SingleAsync();
+            systemId = system.Id;
+            db.Games.Add(new Game { CanonicalTitle = "Second Game", SortTitle = "Second Game", NormalizedTitle = "secondgame", SystemDefinitionId = system.Id });
+            await db.SaveChangesAsync();
+        }
+
+        var counts = await repository.GetGameCountsBySystemAsync(CancellationToken.None);
+
+        Assert.Equal(2, counts[systemId]);
+    }
+
     private sealed class TestDbContextFactory(DbContextOptions<RomManagerDbContext> options) : IDbContextFactory<RomManagerDbContext>
     {
         public RomManagerDbContext CreateDbContext() => new(options);

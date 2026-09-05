@@ -112,5 +112,6 @@ public sealed class LibraryExportServiceTests : IDisposable
         public Task<IReadOnlyList<FuzzyMatchCandidate>> GetFuzzyMatchCandidatesAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task MergeGamesAsync(long keepGameId, long mergeGameId, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<SystemDefinition>> GetSystemsAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyDictionary<int, long>> GetGameCountsBySystemAsync(CancellationToken ct) => throw new NotSupportedException();
     }
 }

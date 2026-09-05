@@ -25,7 +25,7 @@ public sealed class MainViewModel : ObservableObject
     private CancellationTokenSource? thumbnailCancellation;
     private string searchText = "", statusText = "Ready", currentPath = "";
     private bool isScanning, isInitialized, forceFullReverify;
-    private SystemDefinition? selectedSystem;
+    private SystemListItem? selectedSystem;
     private LibraryFilterOption? selectedFilter;
     private GameListItem? selectedGame;
     private GameFile? selectedFile;
@@ -78,7 +78,7 @@ public sealed class MainViewModel : ObservableObject
         new(LibraryViewFilter.Wanted, "Wanted")
     ];
     public ObservableCollection<GameListItem> SelectedGames { get; } = [];
-    public ObservableCollection<SystemDefinition> Systems { get; } = [];
+    public ObservableCollection<SystemListItem> Systems { get; } = [];
     public ObservableCollection<ScanLocation> ScanLocations { get; } = [];
     public AsyncCommand ScanCommand { get; }
     public RelayCommand CancelCommand { get; }
@@ -120,7 +120,7 @@ public sealed class MainViewModel : ObservableObject
     public string CurrentPath { get => currentPath; private set => Set(ref currentPath, value); }
     public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); ExportCsvCommand.Refresh(); VerifyCatalogCommand.Refresh(); ReviewDuplicateTitlesCommand.Refresh(); CleanUpTitlesCommand.Refresh(); MergeExactDuplicatesCommand.Refresh(); ExportDuplicateReportCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); ExportPreferredLibraryCommand.Refresh(); ExportWantedLibraryCommand.Refresh(); MarkWantedCommand.Refresh(); UnmarkWantedCommand.Refresh(); } } }
     public LibraryCounts Counts { get => counts; private set => Set(ref counts, value); }
-    public SystemDefinition? SelectedSystem { get => selectedSystem; set { if (Set(ref selectedSystem, value) && isInitialized) _ = RefreshLibraryAsync(); } }
+    public SystemListItem? SelectedSystem { get => selectedSystem; set { if (Set(ref selectedSystem, value) && isInitialized) _ = RefreshLibraryAsync(); } }
     public LibraryFilterOption? SelectedFilter { get => selectedFilter; set { if (Set(ref selectedFilter, value) && isInitialized) _ = RefreshLibraryAsync(); } }
     public GameListItem? SelectedGame { get => selectedGame; set { if (Set(ref selectedGame, value)) _ = LoadDetailsAsync(value?.Id); } }
     public Game? GameDetails { get => gameDetails; private set { Set(ref gameDetails, value); Raise(nameof(DetailFiles)); } }
@@ -176,7 +176,15 @@ public sealed class MainViewModel : ObservableObject
 
     public void CancelActiveScan() => scanCancellation?.Cancel();
 
-    private async Task RefreshSystemsAsync() { Systems.Clear(); Systems.Add(new SystemDefinition { Id = 0, Key = "ALL", Name = "All systems", Manufacturer = "" }); foreach (var s in await Task.Run(() => repository.GetSystemsAsync(CancellationToken.None))) Systems.Add(s); SelectedSystem ??= Systems[0]; }
+    private async Task RefreshSystemsAsync()
+    {
+        var systems = await Task.Run(() => repository.GetSystemsAsync(CancellationToken.None));
+        var counts = await Task.Run(() => repository.GetGameCountsBySystemAsync(CancellationToken.None));
+        Systems.Clear();
+        Systems.Add(new SystemListItem(new SystemDefinition { Id = 0, Key = "ALL", Name = "All systems", Manufacturer = "" }, counts.Values.Sum()));
+        foreach (var s in systems) Systems.Add(new SystemListItem(s, counts.GetValueOrDefault(s.Id)));
+        SelectedSystem ??= Systems[0];
+    }
     private async Task RefreshLocationsAsync() { var selectedId = SelectedLocation?.Id; ScanLocations.Clear(); foreach (var item in await Task.Run(() => repository.GetScanLocationsAsync(false, CancellationToken.None))) ScanLocations.Add(item); SelectedLocation = selectedId.HasValue ? ScanLocations.FirstOrDefault(x => x.Id == selectedId) : ScanLocations.FirstOrDefault(); }
     private Task RefreshLibraryAsync() => RefreshLibraryAsync(0);
 

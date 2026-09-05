@@ -570,6 +570,17 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
     public async Task<IReadOnlyList<SystemDefinition>> GetSystemsAsync(CancellationToken ct)
     { await using var db = await factory.CreateDbContextAsync(ct); return await db.Systems.AsNoTracking().OrderBy(x => x.Name).ToListAsync(ct); }
 
+    // One row per distinct Game, exactly matching the total shown at the bottom of the library view -
+    // a game with 5 duplicate files is still 1 game, so this is naturally immune to file-level noise
+    // (exact duplicates, multiple regions/revisions) without any extra filtering.
+    public async Task<IReadOnlyDictionary<int, long>> GetGameCountsBySystemAsync(CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        return await db.Games.AsNoTracking().GroupBy(x => x.SystemDefinitionId)
+            .Select(g => new { SystemDefinitionId = g.Key, Count = (long)g.Count() })
+            .ToDictionaryAsync(x => x.SystemDefinitionId, x => x.Count, ct);
+    }
+
     private async Task EnsureGameCacheAsync(CancellationToken ct)
     {
         if (gamesByKey is not null) return;

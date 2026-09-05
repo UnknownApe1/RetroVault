@@ -71,6 +71,7 @@ public interface ILibraryRepository
     Task MergeExactTitleDuplicateGroupAsync(IReadOnlyList<long> gameIds, CancellationToken cancellationToken);
     Task<IReadOnlyList<DuplicateFileRow>> GetDuplicateFileReportAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<SystemDefinition>> GetSystemsAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyDictionary<int, long>> GetGameCountsBySystemAsync(CancellationToken cancellationToken);
 }
 
 public interface ISystemDefinitionProvider { Task<IReadOnlyList<SystemDefinition>> LoadAsync(CancellationToken cancellationToken); }
