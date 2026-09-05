@@ -208,7 +208,7 @@ public sealed class MainViewModel : ObservableObject
                 return (games, counts);
             }, token);
             token.ThrowIfCancellationRequested();
-            Games.ReplaceAll(result.games.Select(x => new GameListItem(x, thumbnails)));
+            Games.ReplaceAll(result.games.Select(x => new GameListItem(x)));
             Counts = result.counts;
             if (!IsScanning) StatusText = $"Ready — showing {Games.Count:N0} games";
         }

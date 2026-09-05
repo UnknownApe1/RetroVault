@@ -102,15 +102,6 @@
                   VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                   ScrollViewer.IsDeferredScrollingEnabled="True">
           <ListView.View><GridView>
-            <GridViewColumn Header="" Width="40">
-              <GridViewColumn.CellTemplate>
-                <DataTemplate>
-                  <Border Width="30" Height="30" Background="{StaticResource RaisedBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="2" Loaded="ThumbnailCell_Loaded">
-                    <Image Source="{Binding ThumbnailPath}" Stretch="Uniform"/>
-                  </Border>
-                </DataTemplate>
-              </GridViewColumn.CellTemplate>
-            </GridViewColumn>
             <GridViewColumn Header="GAME" Width="260" DisplayMemberBinding="{Binding Title}"/>
             <GridViewColumn Header="SYSTEM" Width="165" DisplayMemberBinding="{Binding System}"/>
             <GridViewColumn Header="REGION" Width="80" DisplayMemberBinding="{Binding Region}"/>
