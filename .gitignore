@@ -1,0 +1,16 @@
+bin/
+obj/
+artifacts/
+*.user
+*.suo
+TestResults/
+
+/Patches/
+
+# Local application state and developer tooling
+*.db
+*.db-wal
+*.db-shm
+*.log
+.vs/
+.vscode/

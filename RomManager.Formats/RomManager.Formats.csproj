@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup><ProjectReference Include="..\RomManager.Core\RomManager.Core.csproj" /></ItemGroup>
+  <ItemGroup><PackageReference Include="SharpCompress" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="Systems\systems.json" /><None Include="Systems\systems.json" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+</Project>
