@@ -1,5 +1,9 @@
 # ROM Manager — Milestone 1
 
+**Beta release:** [Download ROM Manager v1.18.0-beta.1 for Windows](https://github.com/UnknownApe1/RomManager/releases/download/v1.18.0-beta.1/RomManager-v1.18.0-beta.1-win-x64.zip)
+
+![ROM Manager interface](docs/rom-manager-screenshot.png)
+
 A Windows 10/11 desktop application that safely indexes ROM and game files without moving, renaming, deleting, extracting, or modifying them.
 
 ## What works
