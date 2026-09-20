@@ -30,13 +30,18 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        var demoMode = e.Args.Any(x => string.Equals(x, "--demo", StringComparison.OrdinalIgnoreCase));
+        var appDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "CozziForged",
+            demoMode ? "RetroVault-Demo" : "RomManager");
+        Environment.SetEnvironmentVariable("RETROVAULT_DATA_DIR", appDirectory);
         instanceMutex = new Mutex(true, @"Local\CozziForged.RomManager", out ownsInstanceMutex);
         if (!ownsInstanceMutex)
         {
             MessageBox.Show("RetroVault is already running. Only one instance can scan the library at a time.", "RetroVault", MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown(0); return;
         }
-        var appDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CozziForged", "RomManager");
         Directory.CreateDirectory(appDirectory);
         ApplyPendingDatabaseRestore(appDirectory);
         crashLogPath = Path.Combine(appDirectory, "Logs", "crash.log");

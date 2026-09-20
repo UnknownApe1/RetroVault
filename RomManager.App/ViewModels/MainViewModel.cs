@@ -283,7 +283,8 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private static string AppDataDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CozziForged", "RomManager");
+    private static string AppDataDirectory => Environment.GetEnvironmentVariable("RETROVAULT_DATA_DIR")
+        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CozziForged", "RomManager");
     private static string DatabasePath => Path.Combine(AppDataDirectory, "library.db");
 
     private async Task BackupDatabaseAsync()

@@ -110,6 +110,14 @@ To create a self-contained Windows package:
 
 The output is placed in `artifacts\publish\win-x64`.
 
+To preview the first-run welcome screen without opening your normal library, launch:
+
+```powershell
+.\RomManager.exe --demo
+```
+
+Demo mode uses a separate `%LOCALAPPDATA%\CozziForged\RetroVault-Demo` profile and does not open or modify your normal RetroVault database.
+
 ## Applying later updates
 
 Starting with v1.4.0, place the patch that matches your installed version in `C:\RomManager\Patches`, close RetroVault, and run `Update.cmd`. The helper selects the newest patch, verifies the working tree, applies it, runs the release build, and records the successfully built version in local Git. It stops without applying anything when the patch does not match or the source has uncommitted changes.
