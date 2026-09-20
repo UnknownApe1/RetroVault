@@ -45,7 +45,7 @@
               <Button Content="Backup Database" Command="{Binding BackupDatabaseCommand}" Style="{StaticResource ChipButton}" ToolTip="Create a read-only backup of the indexed library database and its SQLite sidecar files"/>
               <Button Content="Restore Database" Command="{Binding RestoreDatabaseCommand}" Style="{StaticResource ChipButton}" ToolTip="Stage a database restore and restart safely before the database is replaced"/>
               <Button Content="Export Settings" Command="{Binding ExportSettingsCommand}" Style="{StaticResource ChipButton}" ToolTip="Export scan locations and their options to a portable JSON file"/>
-              <Button Content="Import Settings" Command="{Binding ImportSettingsCommand}" Style="{StaticResource ChipButton}" ToolTip="Import scan locations from a ROM Manager JSON settings file"/>
+              <Button Content="Import Settings" Command="{Binding ImportSettingsCommand}" Style="{StaticResource ChipButton}" ToolTip="Import scan locations from a RetroVault JSON settings file"/>
             </StackPanel>
           </Border>
         </WrapPanel>

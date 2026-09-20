@@ -290,8 +290,8 @@ public sealed class MainViewModel : ObservableObject
     {
         var dialog = new SaveFileDialog
         {
-            Title = "Back up ROM Manager database",
-            Filter = "ROM Manager backup (*.db)|*.db|All files (*.*)|*.*",
+            Title = "Back up RetroVault database",
+            Filter = "RetroVault backup (*.db)|*.db|All files (*.*)|*.*",
             DefaultExt = ".db",
             AddExtension = true,
             FileName = $"rom-manager-backup-{DateTime.Now:yyyyMMdd-HHmmss}.db"
@@ -324,12 +324,12 @@ public sealed class MainViewModel : ObservableObject
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Restore ROM Manager database",
-            Filter = "ROM Manager database (*.db)|*.db|All files (*.*)|*.*",
+            Title = "Restore RetroVault database",
+            Filter = "RetroVault database (*.db)|*.db|All files (*.*)|*.*",
             CheckFileExists = true
         };
         if (dialog.ShowDialog() != true) return;
-        if (MessageBox.Show("ROM Manager will close and restore this database the next time it starts. A backup of the current database should be created first. Continue?", "Restore database", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        if (MessageBox.Show("RetroVault will close and restore this database the next time it starts. A backup of the current database should be created first. Continue?", "Restore database", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         try
         {
             Directory.CreateDirectory(AppDataDirectory);
@@ -344,7 +344,7 @@ public sealed class MainViewModel : ObservableObject
                     else if (File.Exists(target)) File.Delete(target);
                 }
             });
-            StatusText = "Database restore staged. ROM Manager will close now and restore it on the next start.";
+            StatusText = "Database restore staged. RetroVault will close now and restore it on the next start.";
             await Task.Delay(250);
             Application.Current.Shutdown(0);
         }
@@ -359,7 +359,7 @@ public sealed class MainViewModel : ObservableObject
     {
         var dialog = new SaveFileDialog
         {
-            Title = "Export ROM Manager settings",
+            Title = "Export RetroVault settings",
             Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
             DefaultExt = ".json",
             AddExtension = true,
@@ -383,7 +383,7 @@ public sealed class MainViewModel : ObservableObject
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Import ROM Manager settings",
+            Title = "Import RetroVault settings",
             Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
             CheckFileExists = true
         };

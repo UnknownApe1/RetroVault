@@ -1,4 +1,4 @@
-# RetroVault — ROM Manager for Windows
+# RetroVault — ROM library manager for Windows
 
 [![Latest beta release](https://img.shields.io/github/v/release/UnknownApe1/RetroVault?include_prereleases&label=latest%20beta)](https://github.com/UnknownApe1/RetroVault/releases/tag/v1.18.0-beta.1)
 [![Download for Windows](https://img.shields.io/badge/Download-Windows%20x64-1f883d?style=for-the-badge&logo=windows)](https://github.com/UnknownApe1/RetroVault/releases/download/v1.18.0-beta.1/RomManager-v1.18.0-beta.1-win-x64.zip)
@@ -112,7 +112,7 @@ The output is placed in `artifacts\publish\win-x64`.
 
 ## Applying later updates
 
-Starting with v1.4.0, place the patch that matches your installed version in `C:\RomManager\Patches`, close ROM Manager, and run `Update.cmd`. The helper selects the newest patch, verifies the working tree, applies it, runs the release build, and records the successfully built version in local Git. It stops without applying anything when the patch does not match or the source has uncommitted changes.
+Starting with v1.4.0, place the patch that matches your installed version in `C:\RomManager\Patches`, close RetroVault, and run `Update.cmd`. The helper selects the newest patch, verifies the working tree, applies it, runs the release build, and records the successfully built version in local Git. It stops without applying anything when the patch does not match or the source has uncommitted changes.
 
 ## First use
 
@@ -144,7 +144,7 @@ For detailed scanner diagnostics, launch `RomManager.exe --verbose-scan`. Normal
 
 - **Quick hash is not proof of duplication.** It only selects candidates. The application marks `Duplicate` after full SHA-256 equality.
 - **Catalog verification is exact.** `Verified` means the file bytes—or a ROM contained inside a ZIP—matched a published SHA-1 or size/CRC32 catalog record. `NoMatch` does not automatically mean bad; headered, transformed, encrypted, or compressed disc formats may not match the catalog's canonical representation.
-- **Preferred is a recommendation, not a deletion decision.** It can be changed by later review tools, and ROM Manager never moves, renames, or deletes ROMs — Export Good Roms only ever copies.
+- **Preferred is a recommendation, not a deletion decision.** It can be changed by later review tools, and RetroVault never moves, renames, or deletes ROMs — Export Good Roms only ever copies.
 - **CUE/BIN export completeness depends on the format catalog.** A `.cue` is only exported correctly if its `.bin` track file was itself scanned as a candidate format for that system. Every CUE-based system in the catalog (PSX, Saturn, Sega CD, 3DO, Dreamcast, Jaguar CD, PC Engine CD, Neo Geo CD, CD-i, Amiga CD32, FM Towns) now lists `.bin` as a `DiscImage` candidate, resolved against the sibling `.cue`/`.chd` entries by folder-name and path hints when more than one system claims the extension.
 - **Catalog provenance.** Automatic DAT downloads come from the CC BY-SA 4.0 [Libretro Database](https://github.com/libretro/libretro-database), which imports upstream No-Intro and Redump data and identifies source precedence in its repository documentation.
 - **Uncertain filename similarity is not auto-merged.** Scanning groups deterministic normalized titles within one system; the **Review Duplicate Titles** screen surfaces likely fuzzy matches for a human to merge or dismiss, one pair at a time.
