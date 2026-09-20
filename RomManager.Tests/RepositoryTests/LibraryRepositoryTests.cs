@@ -180,6 +180,41 @@ public sealed class LibraryRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchGamesAsync_UnboundedCompatibilityPathReturnsEveryGame()
+    {
+        await using var db = CreateContext();
+        var system = new SystemDefinition { Key = "NES", Name = "NES", Manufacturer = "Nintendo" };
+        db.Systems.Add(system);
+        await db.SaveChangesAsync();
+        for (var i = 0; i < 6; i++)
+            db.Games.Add(new Game { CanonicalTitle = $"Game {i}", SortTitle = $"Game {i}", NormalizedTitle = $"game{i}", SystemDefinitionId = system.Id });
+        await db.SaveChangesAsync();
+
+        var results = await repository.SearchGamesAsync(null, null, LibraryViewFilter.All, CancellationToken.None);
+
+        Assert.Equal(6, results.Count);
+    }
+
+    [Fact]
+    public async Task AssignFileToSystemAsync_ReassignsFileWithoutChangingPhysicalPath()
+    {
+        var (_, usaFileId, _) = await SeedTwoCopiesAsync();
+        await using var db = CreateContext();
+        var genesis = new SystemDefinition { Key = "GENESIS", Name = "Genesis", Manufacturer = "Sega" };
+        genesis.Formats.Add(new SystemFormat { Extension = ".nes", FormatName = "NES ROM", FormatType = FileCategory.Rom, Priority = 10 });
+        db.Systems.Add(genesis);
+        await db.SaveChangesAsync();
+
+        await repository.AssignFileToSystemAsync(usaFileId, "GENESIS", CancellationToken.None);
+
+        await using var verify = CreateContext();
+        var file = await verify.GameFiles.Include(x => x.Game).ThenInclude(x => x!.SystemDefinition).SingleAsync(x => x.Id == usaFileId);
+        Assert.Equal("C:\\ROMs\\Test Game (USA).nes", file.FullPath);
+        Assert.Equal("GENESIS", file.Game!.SystemDefinition!.Key);
+        Assert.True(file.IsDetectionManual);
+    }
+
+    [Fact]
     public async Task SearchGamesAsync_NeedsReviewFilterReturnsNoMatchAndErrorCopies()
     {
         await using var db = CreateContext();

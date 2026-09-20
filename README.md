@@ -40,7 +40,7 @@ A Windows 10/11 desktop application that safely indexes ROM and game files witho
 - Paged library loading with a **Load more games** action for large libraries
 - Detection confidence and reason tracking for ambiguous files, with a **Needs review** filter and manual system assignment
 - Database backup/deferred restore and scan-location settings export/import
-- Empty-library guidance for first use
+- First-run welcome guidance with a three-step setup flow, safety explanation, backup tip, and Needs review guidance
 - "Neon Cartridge" interface: a near-black ground with a teal-to-violet gradient identity (wordmark, primary action, version badge), evolved from the original Midnight Teal palette rather than replacing it. Toolbar actions are grouped into pill clusters (Cleanup, Verify, Export) that wrap onto a second row instead of clipping off the window edge as more tools were added
 - Visible application version in both the title bar and header so installed builds are easy to identify
 - Fully retemplated buttons, dropdowns, and checkboxes so disabled/checked/expanded states stay legible, instead of the default WPF chrome silently overriding the dark theme

@@ -129,8 +129,11 @@
               </Style>
             </Border.Style>
             <StackPanel Width="340">
-              <TextBlock Text="Your library is empty" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-              <TextBlock Text="Add a ROM folder on the left, then choose Scan Now. RetroVault only reads and indexes your files; it does not move or rename them." TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" TextAlignment="Center" Margin="0,10,0,0"/>
+              <TextBlock Text="Welcome to RetroVault" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+              <TextBlock Text="Your library is ready to be set up." Foreground="{StaticResource AccentBrush}" TextAlignment="Center" Margin="0,4,0,0"/>
+              <TextBlock Text="1. Add a ROM or game folder on the left&#x0a;2. Choose Scan Now to index it&#x0a;3. Review results, then verify or export what you want" TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" TextAlignment="Left" Margin="0,16,0,0"/>
+              <TextBlock Text="RetroVault reads and indexes your files. It never moves, renames, deletes, or modifies your source library." TextWrapping="Wrap" Foreground="{StaticResource TextBrush}" TextAlignment="Center" Margin="0,16,0,0"/>
+              <TextBlock Text="Tip: use Backup Database before major cleanup, and Needs review for uncertain system detections." TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" TextAlignment="Center" Margin="0,12,0,0"/>
             </StackPanel>
           </Border>
           <Button Grid.Row="1" Content="Load more games" Command="{Binding LoadMoreCommand}" HorizontalAlignment="Center" Margin="0,8,0,0"
