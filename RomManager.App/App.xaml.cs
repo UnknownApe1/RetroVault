@@ -38,6 +38,7 @@ public partial class App : Application
         }
         var appDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CozziForged", "RomManager");
         Directory.CreateDirectory(appDirectory);
+        ApplyPendingDatabaseRestore(appDirectory);
         crashLogPath = Path.Combine(appDirectory, "Logs", "crash.log");
         var verboseScanLogging = e.Args.Any(x => string.Equals(x, "--verbose-scan", StringComparison.OrdinalIgnoreCase));
         DispatcherUnhandledException += (_, args) =>
@@ -101,5 +102,37 @@ public partial class App : Application
             File.AppendAllText(crashLogPath, $"{DateTimeOffset.Now:O}{Environment.NewLine}{exception}{Environment.NewLine}{Environment.NewLine}");
         }
         catch (Exception) { }
+    }
+
+    private static void ApplyPendingDatabaseRestore(string appDirectory)
+    {
+        var pending = Path.Combine(appDirectory, "restore.pending.db");
+        if (!File.Exists(pending)) return;
+        var database = Path.Combine(appDirectory, "library.db");
+        try
+        {
+            foreach (var suffix in new[] { "-wal", "-shm" })
+            {
+                var activeSidecar = database + suffix;
+                if (File.Exists(activeSidecar)) File.Delete(activeSidecar);
+            }
+            File.Copy(pending, database, true);
+            foreach (var suffix in new[] { "-wal", "-shm" })
+            {
+                var pendingSidecar = pending + suffix;
+                var activeSidecar = database + suffix;
+                if (File.Exists(pendingSidecar)) File.Copy(pendingSidecar, activeSidecar, true);
+            }
+            File.Delete(pending);
+            foreach (var suffix in new[] { "-wal", "-shm" })
+            {
+                var pendingSidecar = pending + suffix;
+                if (File.Exists(pendingSidecar)) File.Delete(pendingSidecar);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"The pending database restore could not be applied. The existing library was left unchanged.{Environment.NewLine}{Environment.NewLine}{ex.Message}", "ROM Manager restore failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 }

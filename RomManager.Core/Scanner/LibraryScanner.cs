@@ -76,6 +76,9 @@ public sealed class LibraryScanner(IFileSystem fileSystem, IFormatIdentifier for
                 file.DiscNumber = parsed.DiscNumber;
                 file.TrackNumber = parsed.TrackNumber;
                 file.IsDirectory = candidate.IsDirectoryGame;
+                file.DetectionConfidence = identified.Confidence;
+                file.DetectionReason = identified.Reason;
+                file.IsDetectionManual = false;
                 if (identified.Format.IsMultiFile || parsed.TrackNumber.HasValue || (candidate.Extension == ".bin" && identified.Format.FormatType == FileCategory.DiscImage))
                     file.FileGroupId = await repository.GetOrCreateFileGroupAsync(game.Id, parsed.DiscNumber.HasValue ? $"Disc {parsed.DiscNumber}" : parsed.Title, parsed.DiscNumber, cancellationToken);
                 // A directory game's "quick hash" is a hash of its small PARAM.SFO identity file, not a

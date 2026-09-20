@@ -149,6 +149,7 @@ public sealed class LibraryRepositoryTests : IDisposable
             db.Games.Add(new Game { CanonicalTitle = "Not Wanted", SortTitle = "Not Wanted", NormalizedTitle = "notwanted", SystemDefinitionId = system.Id });
             await db.SaveChangesAsync();
         }
+
         await repository.SetGamesWantedAsync([gameId], true, CancellationToken.None);
 
         var wanted = await repository.SearchGamesAsync(null, null, LibraryViewFilter.Wanted, CancellationToken.None);
@@ -156,6 +157,26 @@ public sealed class LibraryRepositoryTests : IDisposable
         var summary = Assert.Single(wanted);
         Assert.Equal("Test Game", summary.Title);
         Assert.True(summary.IsWanted);
+    }
+
+    [Fact]
+    public async Task SearchGamesPageAsync_ReturnsPagesAndHasMoreFlag()
+    {
+        await using var db = CreateContext();
+        var system = new SystemDefinition { Key = "NES", Name = "NES", Manufacturer = "Nintendo" };
+        db.Systems.Add(system);
+        await db.SaveChangesAsync();
+        for (var i = 0; i < 3; i++)
+            db.Games.Add(new Game { CanonicalTitle = $"Game {i}", SortTitle = $"Game {i}", NormalizedTitle = $"game{i}", SystemDefinitionId = system.Id });
+        await db.SaveChangesAsync();
+
+        var first = await repository.SearchGamesPageAsync(null, null, LibraryViewFilter.All, 0, 2, CancellationToken.None);
+        var second = await repository.SearchGamesPageAsync(null, null, LibraryViewFilter.All, 2, 2, CancellationToken.None);
+
+        Assert.Equal(2, first.Games.Count);
+        Assert.True(first.HasMore);
+        Assert.Single(second.Games);
+        Assert.False(second.HasMore);
     }
 
     [Fact]
@@ -176,6 +197,26 @@ public sealed class LibraryRepositoryTests : IDisposable
         var needsReview = await repository.SearchGamesAsync(null, null, LibraryViewFilter.NeedsReview, CancellationToken.None);
 
         Assert.Contains(needsReview, x => x.Title == "Unmatched Game");
+    }
+
+    [Fact]
+    public async Task SearchGamesAsync_NeedsReviewFilterReturnsLowConfidenceDetection()
+    {
+        await using var db = CreateContext();
+        var system = new SystemDefinition { Key = "NES", Name = "NES", Manufacturer = "Nintendo" };
+        db.Systems.Add(system);
+        var location = new ScanLocation { Path = "C:\\ROMs" };
+        db.ScanLocations.Add(location);
+        await db.SaveChangesAsync();
+        var game = new Game { CanonicalTitle = "Ambiguous Game", SortTitle = "Ambiguous Game", NormalizedTitle = "ambiguousgame", SystemDefinitionId = system.Id };
+        db.Games.Add(game);
+        await db.SaveChangesAsync();
+        db.GameFiles.Add(new GameFile { GameId = game.Id, ScanLocationId = location.Id, FullPath = "C:\\ROMs\\Ambiguous.iso", FileName = "Ambiguous.iso", Extension = ".iso", Status = FileStatus.Normal, DetectionConfidence = 0.5, DetectionReason = "Ambiguous extension" });
+        await db.SaveChangesAsync();
+
+        var needsReview = await repository.SearchGamesAsync(null, null, LibraryViewFilter.NeedsReview, CancellationToken.None);
+
+        Assert.Contains(needsReview, x => x.Title == "Ambiguous Game");
     }
 
     [Fact]

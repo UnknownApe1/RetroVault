@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using System.Windows;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
@@ -22,9 +23,11 @@ public sealed class MainViewModel : ObservableObject
     private readonly ILogger<MainViewModel> logger;
     private CancellationTokenSource? scanCancellation;
     private CancellationTokenSource? refreshCancellation;
+    private CancellationTokenSource? detailsCancellation;
     private CancellationTokenSource? thumbnailCancellation;
     private string searchText = "", statusText = "Ready", currentPath = "";
     private bool isScanning, isInitialized, forceFullReverify;
+    private bool hasMoreGames, isLoadingMore;
     private SystemListItem? selectedSystem;
     private LibraryFilterOption? selectedFilter;
     private GameListItem? selectedGame;
@@ -44,15 +47,21 @@ public sealed class MainViewModel : ObservableObject
         ToggleLocationCommand = new AsyncCommand(ToggleLocationAsync, () => SelectedLocation is not null && !IsScanning);
         ToggleRecursiveCommand = new AsyncCommand(ToggleRecursiveAsync, () => SelectedLocation is not null && !IsScanning);
         RefreshCommand = new AsyncCommand(RefreshLibraryAsync);
+        LoadMoreCommand = new AsyncCommand(LoadMoreAsync, () => HasMoreGames && !IsScanning && !IsLoadingMore);
         OpenFolderCommand = new RelayCommand(OpenSelectedFolder, () => SelectedFile is not null);
         CopyPathCommand = new RelayCommand(() => { if (SelectedFile is not null) Clipboard.SetText(SelectedFile.FullPath); }, () => SelectedFile is not null);
         VerifyHashCommand = new AsyncCommand(VerifyHashAsync, () => SelectedFile is not null && !IsScanning);
+        AssignSystemCommand = new AsyncCommand(AssignSelectedFileSystemAsync, () => SelectedFile is not null && SelectedSystem is { Id: > 0 } && !IsScanning);
         ExportCsvCommand = new AsyncCommand(ExportLibraryCsvAsync, () => !IsScanning);
         VerifyCatalogCommand = new AsyncCommand(VerifyCatalogAsync, () => !IsScanning);
         ReviewDuplicateTitlesCommand = new AsyncCommand(ReviewDuplicateTitlesAsync, () => !IsScanning);
         CleanUpTitlesCommand = new AsyncCommand(CleanUpTitlesAsync, () => !IsScanning);
         MergeExactDuplicatesCommand = new AsyncCommand(MergeExactDuplicatesAsync, () => !IsScanning);
         ExportDuplicateReportCommand = new AsyncCommand(ExportDuplicateReportAsync, () => !IsScanning);
+        BackupDatabaseCommand = new AsyncCommand(BackupDatabaseAsync, () => !IsScanning);
+        RestoreDatabaseCommand = new AsyncCommand(RestoreDatabaseAsync, () => !IsScanning);
+        ExportSettingsCommand = new AsyncCommand(ExportSettingsAsync, () => !IsScanning);
+        ImportSettingsCommand = new AsyncCommand(ImportSettingsAsync, () => !IsScanning);
         PreferCopyCommand = new AsyncCommand(TogglePreferredCopyAsync, () => SelectedFile is not null && !IsScanning);
         ExcludeCopyCommand = new AsyncCommand(ToggleExcludedCopyAsync, () => SelectedFile is not null && !IsScanning);
         ExcludeNonPreferredCommand = new AsyncCommand(ExcludeNonPreferredAsync, () => SelectedGames.Count > 0 && !IsScanning);
@@ -87,15 +96,21 @@ public sealed class MainViewModel : ObservableObject
     public AsyncCommand ToggleLocationCommand { get; }
     public AsyncCommand ToggleRecursiveCommand { get; }
     public AsyncCommand RefreshCommand { get; }
+    public AsyncCommand LoadMoreCommand { get; }
     public RelayCommand OpenFolderCommand { get; }
     public RelayCommand CopyPathCommand { get; }
     public AsyncCommand VerifyHashCommand { get; }
+    public AsyncCommand AssignSystemCommand { get; }
     public AsyncCommand ExportCsvCommand { get; }
     public AsyncCommand VerifyCatalogCommand { get; }
     public AsyncCommand ReviewDuplicateTitlesCommand { get; }
     public AsyncCommand CleanUpTitlesCommand { get; }
     public AsyncCommand MergeExactDuplicatesCommand { get; }
     public AsyncCommand ExportDuplicateReportCommand { get; }
+    public AsyncCommand BackupDatabaseCommand { get; }
+    public AsyncCommand RestoreDatabaseCommand { get; }
+    public AsyncCommand ExportSettingsCommand { get; }
+    public AsyncCommand ImportSettingsCommand { get; }
     public AsyncCommand PreferCopyCommand { get; }
     public AsyncCommand ExcludeCopyCommand { get; }
     public AsyncCommand ExcludeNonPreferredCommand { get; }
@@ -109,18 +124,21 @@ public sealed class MainViewModel : ObservableObject
     public ScanLocation? SelectedLocation { get => selectedLocation; set { if (Set(ref selectedLocation, value)) { RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); Raise(nameof(LocationToggleLabel)); Raise(nameof(RecursiveToggleLabel)); } } }
     public string LocationToggleLabel => SelectedLocation?.Enabled == true ? "Disable" : "Enable";
     public string RecursiveToggleLabel => SelectedLocation?.Recursive == true ? "Recursive: On" : "Recursive: Off";
-    public GameFile? SelectedFile { get => selectedFile; set { if (Set(ref selectedFile, value)) { OpenFolderCommand.Refresh(); CopyPathCommand.Refresh(); VerifyHashCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); Raise(nameof(PreferCopyLabel)); Raise(nameof(ExcludeCopyLabel)); _ = LoadThumbnailAsync(); } } }
+    public GameFile? SelectedFile { get => selectedFile; set { if (Set(ref selectedFile, value)) { OpenFolderCommand.Refresh(); CopyPathCommand.Refresh(); VerifyHashCommand.Refresh(); AssignSystemCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); Raise(nameof(PreferCopyLabel)); Raise(nameof(ExcludeCopyLabel)); _ = LoadThumbnailAsync(); } } }
     public string PreferCopyLabel => SelectedFile?.IsManuallyPreferred == true ? "Use Automatic Choice" : "Use This Copy";
     public string ExcludeCopyLabel => SelectedFile?.IsExcluded == true ? "Include Copy" : "Exclude Copy";
     public string? ThumbnailPath { get => thumbnailPath; private set => Set(ref thumbnailPath, value); }
     public string SelectedGamesCountText => SelectedGames.Count == 0 ? "" : $"{SelectedGames.Count:N0} selected";
+    public bool IsLibraryEmpty => Games.Count == 0 && !IsScanning;
     public string SearchText { get => searchText; set { if (Set(ref searchText, value) && isInitialized) _ = RefreshLibraryAsync(250); } }
     public bool ForceFullReverify { get => forceFullReverify; set => Set(ref forceFullReverify, value); }
     public string StatusText { get => statusText; private set => Set(ref statusText, value); }
+    public bool HasMoreGames { get => hasMoreGames; private set { if (Set(ref hasMoreGames, value)) LoadMoreCommand.Refresh(); } }
+    public bool IsLoadingMore { get => isLoadingMore; private set { if (Set(ref isLoadingMore, value)) LoadMoreCommand.Refresh(); } }
     public string CurrentPath { get => currentPath; private set => Set(ref currentPath, value); }
-    public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); ExportCsvCommand.Refresh(); VerifyCatalogCommand.Refresh(); ReviewDuplicateTitlesCommand.Refresh(); CleanUpTitlesCommand.Refresh(); MergeExactDuplicatesCommand.Refresh(); ExportDuplicateReportCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); ExportPreferredLibraryCommand.Refresh(); ExportWantedLibraryCommand.Refresh(); MarkWantedCommand.Refresh(); UnmarkWantedCommand.Refresh(); } } }
+    public bool IsScanning { get => isScanning; private set { if (Set(ref isScanning, value)) { Raise(nameof(IsLibraryEmpty)); ScanCommand.Refresh(); CancelCommand.Refresh(); AddFolderCommand.Refresh(); RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); VerifyHashCommand.Refresh(); AssignSystemCommand.Refresh(); ExportCsvCommand.Refresh(); VerifyCatalogCommand.Refresh(); ReviewDuplicateTitlesCommand.Refresh(); CleanUpTitlesCommand.Refresh(); MergeExactDuplicatesCommand.Refresh(); ExportDuplicateReportCommand.Refresh(); BackupDatabaseCommand.Refresh(); RestoreDatabaseCommand.Refresh(); ExportSettingsCommand.Refresh(); ImportSettingsCommand.Refresh(); PreferCopyCommand.Refresh(); ExcludeCopyCommand.Refresh(); ExcludeNonPreferredCommand.Refresh(); ClearOverridesCommand.Refresh(); ExportPreferredLibraryCommand.Refresh(); ExportWantedLibraryCommand.Refresh(); MarkWantedCommand.Refresh(); UnmarkWantedCommand.Refresh(); LoadMoreCommand.Refresh(); } } }
     public LibraryCounts Counts { get => counts; private set => Set(ref counts, value); }
-    public SystemListItem? SelectedSystem { get => selectedSystem; set { if (Set(ref selectedSystem, value) && isInitialized) _ = RefreshLibraryAsync(); } }
+    public SystemListItem? SelectedSystem { get => selectedSystem; set { if (Set(ref selectedSystem, value)) { AssignSystemCommand.Refresh(); if (isInitialized) _ = RefreshLibraryAsync(); } } }
     public LibraryFilterOption? SelectedFilter { get => selectedFilter; set { if (Set(ref selectedFilter, value) && isInitialized) _ = RefreshLibraryAsync(); } }
     public GameListItem? SelectedGame { get => selectedGame; set { if (Set(ref selectedGame, value)) _ = LoadDetailsAsync(value?.Id); } }
     public Game? GameDetails { get => gameDetails; private set { Set(ref gameDetails, value); Raise(nameof(DetailFiles)); } }
@@ -203,15 +221,20 @@ public sealed class MainViewModel : ObservableObject
             int? systemId = SelectedSystem is { Id: > 0 } ? SelectedSystem.Id : null;
             var result = await Task.Run(async () =>
             {
-                var games = await repository.SearchGamesAsync(search, systemId, filter, token);
+                var games = repository is IPagedLibraryRepository paged
+                    ? await paged.SearchGamesPageAsync(search, systemId, filter, 0, 500, token)
+                    : new PagedGameResult(await repository.SearchGamesAsync(search, systemId, filter, token), false);
                 var counts = await repository.GetCountsAsync(token);
                 return (games, counts);
             }, token);
             token.ThrowIfCancellationRequested();
-            Games.ReplaceAll(result.games.Select(x => new GameListItem(x)));
+            Games.ReplaceAll(result.games.Games.Select(x => new GameListItem(x)));
+            HasMoreGames = result.games.HasMore;
             Counts = result.counts;
-            if (!IsScanning) StatusText = $"Ready — showing {Games.Count:N0} games";
+            Raise(nameof(IsLibraryEmpty));
+            if (!IsScanning) StatusText = $"Ready — showing {Games.Count:N0} games{(HasMoreGames ? " (load more available)" : "")}";
         }
+
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception ex)
         {
@@ -223,15 +246,261 @@ public sealed class MainViewModel : ObservableObject
             if (ReferenceEquals(Interlocked.CompareExchange(ref refreshCancellation, null, cancellation), cancellation)) cancellation.Dispose();
         }
     }
-    private async Task LoadDetailsAsync(long? id) { GameDetails = id.HasValue ? await Task.Run(() => repository.GetGameDetailsAsync(id.Value, CancellationToken.None)) : null; SelectedFile = GameDetails?.Files.FirstOrDefault(); }
+
+    private async Task LoadMoreAsync()
+    {
+        if (!HasMoreGames || IsLoadingMore || IsScanning) return;
+        IsLoadingMore = true;
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref refreshCancellation, cancellation);
+        previous?.Cancel();
+        previous?.Dispose();
+        var token = cancellation.Token;
+        try
+        {
+            var search = SearchText;
+            var filter = SelectedFilter?.Value ?? LibraryViewFilter.All;
+            int? systemId = SelectedSystem is { Id: > 0 } ? SelectedSystem.Id : null;
+            var page = repository is IPagedLibraryRepository paged
+                ? await paged.SearchGamesPageAsync(search, systemId, filter, Games.Count, 500, token)
+                : new PagedGameResult(await repository.SearchGamesAsync(search, systemId, filter, token), false);
+            token.ThrowIfCancellationRequested();
+            foreach (var game in page.Games) Games.Add(new GameListItem(game));
+            HasMoreGames = page.HasMore;
+            StatusText = $"Ready — showing {Games.Count:N0} games{(HasMoreGames ? " (load more available)" : "")}";
+        }
+
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not load more library results");
+            StatusText = $"Could not load more games: {ex.Message}";
+        }
+        finally
+        {
+            if (ReferenceEquals(Interlocked.CompareExchange(ref refreshCancellation, null, cancellation), cancellation)) cancellation.Dispose();
+            IsLoadingMore = false;
+        }
+    }
+
+    private static string AppDataDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CozziForged", "RomManager");
+    private static string DatabasePath => Path.Combine(AppDataDirectory, "library.db");
+
+    private async Task BackupDatabaseAsync()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Back up ROM Manager database",
+            Filter = "ROM Manager backup (*.db)|*.db|All files (*.*)|*.*",
+            DefaultExt = ".db",
+            AddExtension = true,
+            FileName = $"rom-manager-backup-{DateTime.Now:yyyyMMdd-HHmmss}.db"
+        };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(dialog.FileName)!);
+            await Task.Run(() =>
+            {
+                File.Copy(DatabasePath, dialog.FileName, true);
+                foreach (var suffix in new[] { "-wal", "-shm" })
+                {
+                    var sidecar = DatabasePath + suffix;
+                    if (File.Exists(sidecar)) File.Copy(sidecar, dialog.FileName + suffix, true);
+                }
+
+            });
+            StatusText = $"Database backup created: {dialog.FileName}";
+        }
+
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not create database backup");
+            StatusText = $"Database backup failed: {ex.Message}";
+        }
+    }
+
+    private async Task RestoreDatabaseAsync()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Restore ROM Manager database",
+            Filter = "ROM Manager database (*.db)|*.db|All files (*.*)|*.*",
+            CheckFileExists = true
+        };
+        if (dialog.ShowDialog() != true) return;
+        if (MessageBox.Show("ROM Manager will close and restore this database the next time it starts. A backup of the current database should be created first. Continue?", "Restore database", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        try
+        {
+            Directory.CreateDirectory(AppDataDirectory);
+            await Task.Run(() =>
+            {
+                File.Copy(dialog.FileName, Path.Combine(AppDataDirectory, "restore.pending.db"), true);
+                foreach (var suffix in new[] { "-wal", "-shm" })
+                {
+                    var sidecar = dialog.FileName + suffix;
+                    var target = Path.Combine(AppDataDirectory, "restore.pending.db" + suffix);
+                    if (File.Exists(sidecar)) File.Copy(sidecar, target, true);
+                    else if (File.Exists(target)) File.Delete(target);
+                }
+            });
+            StatusText = "Database restore staged. ROM Manager will close now and restore it on the next start.";
+            await Task.Delay(250);
+            Application.Current.Shutdown(0);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not stage database restore");
+            StatusText = $"Database restore failed: {ex.Message}";
+        }
+    }
+
+    private async Task ExportSettingsAsync()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export ROM Manager settings",
+            Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+            DefaultExt = ".json",
+            AddExtension = true,
+            FileName = "rom-manager-settings.json"
+        };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            var settings = new SettingsTransfer(1, ScanLocations.Select(x => new ScanLocationTransfer(x.Path, x.Enabled, x.Recursive)).ToList());
+            await File.WriteAllTextAsync(dialog.FileName, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
+            StatusText = $"Settings exported: {dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not export settings");
+            StatusText = $"Settings export failed: {ex.Message}";
+        }
+    }
+
+    private async Task ImportSettingsAsync()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import ROM Manager settings",
+            Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+            CheckFileExists = true
+        };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            var settings = JsonSerializer.Deserialize<SettingsTransfer>(await File.ReadAllTextAsync(dialog.FileName));
+            if (settings is null || settings.Version != 1) throw new InvalidDataException("Unsupported settings file version.");
+            foreach (var location in settings.ScanLocations ?? [])
+            {
+                if (Directory.Exists(location.Path))
+                {
+                    var saved = await repository.AddScanLocationAsync(location.Path, location.Recursive, CancellationToken.None);
+                    await repository.UpdateScanLocationAsync(saved.Id, location.Enabled, location.Recursive, CancellationToken.None);
+                }
+            }
+            await RefreshLocationsAsync();
+            StatusText = $"Imported {settings.ScanLocations?.Count ?? 0:N0} scan location(s)";
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not import settings");
+            StatusText = $"Settings import failed: {ex.Message}";
+        }
+    }
+
+    private sealed record SettingsTransfer(int Version, List<ScanLocationTransfer>? ScanLocations);
+    private sealed record ScanLocationTransfer(string Path, bool Enabled, bool Recursive);
+
+    private async Task LoadDetailsAsync(long? id)
+    {
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref detailsCancellation, cancellation);
+        previous?.Cancel();
+        previous?.Dispose();
+        var token = cancellation.Token;
+        try
+        {
+            if (!id.HasValue)
+            {
+                GameDetails = null;
+                SelectedFile = null;
+                return;
+            }
+
+            var details = await Task.Run(() => repository.GetGameDetailsAsync(id.Value, token), token);
+            token.ThrowIfCancellationRequested();
+            if (SelectedGame?.Id != id.Value) return;
+            GameDetails = details;
+            SelectedFile = details?.Files.FirstOrDefault();
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        finally
+        {
+            if (ReferenceEquals(Interlocked.CompareExchange(ref detailsCancellation, null, cancellation), cancellation))
+                cancellation.Dispose();
+        }
+    }
     private async Task VerifyHashAsync()
     {
-        if (SelectedFile is null) return;
-        if (SelectedFile.IsDirectory) { StatusText = "SHA-256 verification isn't available for folder-based games."; return; }
-        StatusText = $"Verifying {SelectedFile.FileName}...";
-        try { var sha = await hashes.ComputeSha256Async(SelectedFile.FullPath, CancellationToken.None); await repository.SaveSha256Async(SelectedFile.Id, sha, CancellationToken.None); await repository.MarkExactDuplicatesAsync(sha, CancellationToken.None); StatusText = $"SHA-256 verified: {sha[..12]}..."; await RefreshLibraryAsync(); }
+        var file = SelectedFile;
+        if (file is null) return;
+        if (file.IsDirectory) { StatusText = "SHA-256 verification isn't available for folder-based games."; return; }
+        scanCancellation = new();
+        IsScanning = true;
+        StatusText = $"Verifying {file.FileName}...";
+        try
+        {
+            var token = scanCancellation.Token;
+            var sha = await hashes.ComputeSha256Async(file.FullPath, token);
+            await repository.SaveSha256Async(file.Id, sha, token);
+            await repository.MarkExactDuplicatesAsync(sha, token);
+            StatusText = $"SHA-256 verified: {sha[..12]}...";
+            await RefreshLibraryAsync();
+        }
+
+        catch (OperationCanceledException) { StatusText = "SHA-256 verification canceled"; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { StatusText = $"Verification failed: {ex.Message}"; }
+        finally
+        {
+            IsScanning = false;
+            scanCancellation.Dispose();
+            scanCancellation = null;
+            CurrentPath = "";
+        }
     }
+
+    private async Task AssignSelectedFileSystemAsync()
+    {
+        if (SelectedFile is null || SelectedSystem is not { Id: > 0 } || repository is not IManualFileAssignmentRepository assignments) return;
+        var file = SelectedFile;
+        var system = SelectedSystem;
+        if (MessageBox.Show($"Assign \"{file.FileName}\" to {system.Name}? This changes its indexed system only; the file on disk will not be modified.", "Assign system", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        scanCancellation = new();
+        IsScanning = true;
+        try
+        {
+            await assignments.AssignFileToSystemAsync(file.Id, system.Key, scanCancellation.Token);
+            StatusText = $"Assigned {file.FileName} to {system.Name}";
+            await RefreshSystemsAsync();
+            await RefreshLibraryAsync();
+            if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
+        }
+        catch (OperationCanceledException) { StatusText = "System assignment canceled"; }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not assign file to system");
+            StatusText = $"System assignment failed: {ex.Message}";
+        }
+        finally
+        {
+            IsScanning = false;
+            scanCancellation.Dispose();
+            scanCancellation = null;
+        }
+    }
+
     private async Task VerifyCatalogAsync()
     {
         var systemKey = SelectedSystem is { Id: > 0 } ? SelectedSystem.Key : null;
@@ -265,45 +534,81 @@ public sealed class MainViewModel : ObservableObject
     }
     private async Task ReviewDuplicateTitlesAsync()
     {
+        scanCancellation = new();
+        IsScanning = true;
         StatusText = "Scanning titles for likely duplicates...";
         try
         {
-            var candidates = await Task.Run(() => repository.GetFuzzyMatchCandidatesAsync(CancellationToken.None));
+            var token = scanCancellation.Token;
+            var candidates = await Task.Run(() => repository.GetFuzzyMatchCandidatesAsync(token), token);
+            token.ThrowIfCancellationRequested();
             var window = new DuplicateReviewWindow { Owner = Application.Current.MainWindow, DataContext = new DuplicateReviewViewModel(repository, candidates) };
             window.ShowDialog();
             StatusText = "Ready";
             await RefreshLibraryAsync();
             if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
         }
+        catch (OperationCanceledException) { StatusText = "Similar-title review canceled"; }
         catch (Exception ex) { logger.LogError(ex, "Could not scan for similar titles"); StatusText = $"Similar-title scan failed: {ex.Message}"; }
+        finally
+        {
+            IsScanning = false;
+            scanCancellation.Dispose();
+            scanCancellation = null;
+            CurrentPath = "";
+        }
     }
     private async Task CleanUpTitlesAsync()
     {
+        scanCancellation = new();
+        IsScanning = true;
         StatusText = "Scanning titles for cleanup suggestions...";
         try
         {
-            var candidates = await Task.Run(() => repository.GetTitleCleanupCandidatesAsync(CancellationToken.None));
+            var token = scanCancellation.Token;
+            var candidates = await Task.Run(() => repository.GetTitleCleanupCandidatesAsync(token), token);
+            token.ThrowIfCancellationRequested();
             var window = new TitleCleanupWindow { Owner = Application.Current.MainWindow, DataContext = new TitleCleanupViewModel(repository, candidates) };
             window.ShowDialog();
             StatusText = "Ready";
             await RefreshLibraryAsync();
             if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
         }
+        catch (OperationCanceledException) { StatusText = "Title cleanup review canceled"; }
         catch (Exception ex) { logger.LogError(ex, "Could not scan for title cleanup suggestions"); StatusText = $"Title cleanup scan failed: {ex.Message}"; }
+        finally
+        {
+            IsScanning = false;
+            scanCancellation.Dispose();
+            scanCancellation = null;
+            CurrentPath = "";
+        }
     }
     private async Task MergeExactDuplicatesAsync()
     {
+        scanCancellation = new();
+        IsScanning = true;
         StatusText = "Scanning for exact-title duplicates...";
         try
         {
-            var groups = await Task.Run(() => repository.GetExactTitleDuplicateGroupsAsync(CancellationToken.None));
+            var token = scanCancellation.Token;
+            var groups = await Task.Run(() => repository.GetExactTitleDuplicateGroupsAsync(token), token);
+            token.ThrowIfCancellationRequested();
             var window = new ExactTitleMergeWindow { Owner = Application.Current.MainWindow, DataContext = new ExactTitleMergeViewModel(repository, groups) };
             window.ShowDialog();
             StatusText = "Ready";
             await RefreshLibraryAsync();
             if (SelectedGame is not null) await LoadDetailsAsync(SelectedGame.Id);
         }
+        catch (OperationCanceledException) { StatusText = "Exact-title duplicate review canceled"; }
         catch (Exception ex) { logger.LogError(ex, "Could not scan for exact-title duplicates"); StatusText = $"Exact-title duplicate scan failed: {ex.Message}"; }
+        finally
+        {
+            IsScanning = false;
+            scanCancellation.Dispose();
+            scanCancellation = null;
+            CurrentPath = "";
+        }
     }
     private async Task LoadThumbnailAsync()
     {
@@ -415,19 +720,31 @@ public sealed class MainViewModel : ObservableObject
         };
         if (dialog.ShowDialog() != true) return;
 
-        StatusText = "Scanning for duplicate files...";
+        scanCancellation = new();
+        IsScanning = true;
+        StatusText = "Preparing duplicate-file report...";
         try
         {
-            var rows = await Task.Run(() => repository.GetDuplicateFileReportAsync(CancellationToken.None));
-            await Task.Run(() => WriteDuplicateReportCsvAsync(dialog.FileName, rows, CancellationToken.None));
+            var token = scanCancellation.Token;
+            var rows = await Task.Run(() => repository.GetDuplicateFileReportAsync(token), token);
+            token.ThrowIfCancellationRequested();
+            await Task.Run(() => WriteDuplicateReportCsvAsync(dialog.FileName, rows, token), token);
             var groups = rows.GroupBy(x => x.Sha256).ToArray();
             var reclaimable = groups.Sum(g => (long)(g.Count() - 1) * g.First().Size);
             StatusText = $"Exported {rows.Count:N0} duplicate files across {groups.Length:N0} groups to {dialog.FileName} - {reclaimable / (1024.0 * 1024 * 1024):N1} GB reclaimable if you keep one copy per group";
         }
+        catch (OperationCanceledException) { StatusText = "Duplicate report export canceled"; }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Could not export the duplicate-file report");
             StatusText = $"Duplicate report export failed: {ex.Message}";
+        }
+        finally
+        {
+            IsScanning = false;
+            scanCancellation.Dispose();
+            scanCancellation = null;
+            CurrentPath = "";
         }
     }
 
@@ -455,17 +772,29 @@ public sealed class MainViewModel : ObservableObject
         };
         if (dialog.ShowDialog() != true) return;
 
+        scanCancellation = new();
+        IsScanning = true;
         StatusText = "Preparing full library export...";
         try
         {
-            var rows = await Task.Run(() => repository.GetLibraryExportRowsAsync(CancellationToken.None));
-            await Task.Run(() => WriteCsvAsync(dialog.FileName, rows, CancellationToken.None));
+            var token = scanCancellation.Token;
+            var rows = await Task.Run(() => repository.GetLibraryExportRowsAsync(token), token);
+            token.ThrowIfCancellationRequested();
+            await Task.Run(() => WriteCsvAsync(dialog.FileName, rows, token), token);
             StatusText = $"Exported {rows.Count:N0} files to {dialog.FileName}";
         }
+        catch (OperationCanceledException) { StatusText = "Library export canceled"; }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Could not export the library inventory");
             StatusText = $"Export failed: {ex.Message}";
+        }
+        finally
+        {
+            IsScanning = false;
+            scanCancellation.Dispose();
+            scanCancellation = null;
+            CurrentPath = "";
         }
     }
 

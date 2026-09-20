@@ -74,6 +74,16 @@ public interface ILibraryRepository
     Task<IReadOnlyDictionary<int, long>> GetGameCountsBySystemAsync(CancellationToken cancellationToken);
 }
 
+public interface IPagedLibraryRepository
+{
+    Task<PagedGameResult> SearchGamesPageAsync(string? search, int? systemId, LibraryViewFilter filter, int skip, int take, CancellationToken cancellationToken);
+}
+
+public interface IManualFileAssignmentRepository
+{
+    Task AssignFileToSystemAsync(long fileId, string systemKey, CancellationToken cancellationToken);
+}
+
 public interface ISystemDefinitionProvider { Task<IReadOnlyList<SystemDefinition>> LoadAsync(CancellationToken cancellationToken); }
 public interface IGameGroupingService { string CreateGroupingKey(ParsedFileName parsed, string systemKey); }
 public interface ILibraryScanner

@@ -8,7 +8,7 @@ using RomManager.Database.Migrations;
 
 namespace RomManager.Database.Repositories;
 
-public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> factory, ISystemDefinitionProvider definitions) : ILibraryRepository
+public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> factory, ISystemDefinitionProvider definitions) : ILibraryRepository, IPagedLibraryRepository, IManualFileAssignmentRepository
 {
     private readonly SemaphoreSlim gameCacheGate = new(1, 1);
     private Dictionary<int, int> sourceSystemDatabaseIds = [];
@@ -212,6 +212,14 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
 
     public async Task<IReadOnlyList<GameSummary>> SearchGamesAsync(string? search, int? systemId, LibraryViewFilter filter, CancellationToken ct)
     {
+        var result = await SearchGamesPageAsync(search, systemId, filter, 0, int.MaxValue, ct);
+        return result.Games;
+    }
+
+    public async Task<PagedGameResult> SearchGamesPageAsync(string? search, int? systemId, LibraryViewFilter filter, int skip, int take, CancellationToken ct)
+    {
+        if (skip < 0) throw new ArgumentOutOfRangeException(nameof(skip));
+        if (take <= 0) throw new ArgumentOutOfRangeException(nameof(take));
         await using var db = await factory.CreateDbContextAsync(ct);
         var q = db.Games.AsNoTracking().AsQueryable();
         if (systemId.HasValue) q = q.Where(x => x.SystemDefinitionId == systemId);
@@ -223,12 +231,13 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
             LibraryViewFilter.ExactDuplicates => q.Where(x => x.Files.Any(f => f.Status == FileStatus.Duplicate)),
             LibraryViewFilter.MultipleVersions => q.Where(x => x.Files.Count(f => f.Status != FileStatus.Missing) > 1),
             LibraryViewFilter.Missing => q.Where(x => x.Files.Any(f => f.Status == FileStatus.Missing)),
-            LibraryViewFilter.NeedsReview => q.Where(x => x.Files.Any(f => f.CatalogStatus == CatalogVerificationStatus.NoMatch || f.CatalogStatus == CatalogVerificationStatus.Error || f.CatalogStatus == CatalogVerificationStatus.Unsupported)),
+            LibraryViewFilter.NeedsReview => q.Where(x => x.Files.Any(f => f.DetectionConfidence < 0.75 || f.CatalogStatus == CatalogVerificationStatus.NoMatch || f.CatalogStatus == CatalogVerificationStatus.Error || f.CatalogStatus == CatalogVerificationStatus.Unsupported)),
             LibraryViewFilter.PreferredCopies => q.Where(x => x.Files.Any(f => f.IsPreferred)),
             LibraryViewFilter.Wanted => q.Where(x => x.IsWanted),
             _ => q
         };
-        var rows = await q.OrderBy(x => x.SortTitle).Take(5000).Select(x => new
+        var pageTake = take == int.MaxValue ? take : take + 1;
+        var rows = await q.OrderBy(x => x.SortTitle).Skip(skip).Take(pageTake).Select(x => new
         {
             x.Id,
             Title = x.CanonicalTitle,
@@ -243,12 +252,52 @@ public sealed class LibraryRepository(IDbContextFactory<RomManagerDbContext> fac
             TotalSizeBytes = x.Files.Where(f => f.Status != FileStatus.Missing).Sum(f => (long?)f.Size) ?? 0,
             x.IsWanted
         }).ToListAsync(ct);
-        return rows.Select(x => new GameSummary(x.Id, x.Title, x.System, x.SystemKey, x.FileCount, x.DuplicateCount, x.VerifiedCount,
+        var games = rows.Take(take).Select(x => new GameSummary(x.Id, x.Title, x.System, x.SystemKey, x.FileCount, x.DuplicateCount, x.VerifiedCount,
             x.MissingCount > 0 ? FileStatus.Missing : x.DuplicateCount > 0 ? FileStatus.Duplicate : FileStatus.Normal, x.PreferredCatalogName, x.PreferredRegion, x.TotalSizeBytes, x.IsWanted)).ToList();
+        return new PagedGameResult(games, take != int.MaxValue && rows.Count > take);
     }
 
     public async Task<Game?> GetGameDetailsAsync(long id, CancellationToken ct)
     { await using var db = await factory.CreateDbContextAsync(ct); return await db.Games.AsNoTracking().Include(x => x.SystemDefinition).Include(x => x.Files).ThenInclude(x => x.SystemFormat).SingleOrDefaultAsync(x => x.Id == id, ct); }
+
+    public async Task AssignFileToSystemAsync(long fileId, string systemKey, CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var file = await db.GameFiles.Include(x => x.Game).SingleOrDefaultAsync(x => x.Id == fileId, ct)
+            ?? throw new InvalidOperationException("The selected file is no longer in the library.");
+        var targetSystem = await db.Systems.Include(x => x.Formats).SingleOrDefaultAsync(x => x.Key == systemKey, ct)
+            ?? throw new InvalidOperationException($"System '{systemKey}' was not found.");
+        var format = targetSystem.Formats
+            .Where(x => x.Extension == file.Extension)
+            .OrderByDescending(x => x.Priority)
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException($"{targetSystem.Name} does not define a format for {file.Extension}.");
+        if (file.Game is null) throw new InvalidOperationException("The selected file has no game record to reassign.");
+        var targetGame = await db.Games.SingleOrDefaultAsync(x => x.SystemDefinitionId == targetSystem.Id && x.NormalizedTitle == file.Game.NormalizedTitle, ct);
+        if (targetGame is null)
+        {
+            targetGame = new Game
+            {
+                CanonicalTitle = file.Game.CanonicalTitle,
+                SortTitle = file.Game.SortTitle,
+                NormalizedTitle = file.Game.NormalizedTitle,
+                SystemDefinitionId = targetSystem.Id,
+                IsWanted = file.Game.IsWanted
+            };
+            db.Games.Add(targetGame);
+            await db.SaveChangesAsync(ct);
+        }
+        file.GameId = targetGame.Id;
+        file.SystemFormatId = format.Id;
+        file.DetectionConfidence = 1;
+        file.DetectionReason = $"Manually assigned to {targetSystem.Name}";
+        file.IsDetectionManual = true;
+        await db.SaveChangesAsync(ct);
+        await db.GameFiles.Where(x => x.GameId == file.GameId && x.Id != file.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.IsPreferred, false), ct);
+        await transaction.CommitAsync(ct);
+        gamesByKey = null;
+    }
 
     public async Task<LibraryCounts> GetCountsAsync(CancellationToken ct)
     { await using var db = await factory.CreateDbContextAsync(ct); return new(await db.Games.LongCountAsync(ct), await db.GameFiles.LongCountAsync(ct), await db.GameFiles.LongCountAsync(x => x.Status == FileStatus.Duplicate, ct), await db.GameFiles.LongCountAsync(x => x.Status == FileStatus.Missing, ct), await db.GameFiles.LongCountAsync(x => x.CatalogStatus == CatalogVerificationStatus.Verified, ct)); }
