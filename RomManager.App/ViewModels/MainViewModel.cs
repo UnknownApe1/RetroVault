@@ -120,7 +120,7 @@ public sealed class MainViewModel : ObservableObject
     public AsyncCommand MarkWantedCommand { get; }
     public AsyncCommand UnmarkWantedCommand { get; }
     public string VersionText { get; } = GetVersionText();
-    public string WindowTitle => $"ROM Manager {VersionText}";
+    public string WindowTitle => $"RetroVault {VersionText}";
     public ScanLocation? SelectedLocation { get => selectedLocation; set { if (Set(ref selectedLocation, value)) { RemoveFolderCommand.Refresh(); ToggleLocationCommand.Refresh(); ToggleRecursiveCommand.Refresh(); Raise(nameof(LocationToggleLabel)); Raise(nameof(RecursiveToggleLabel)); } } }
     public string LocationToggleLabel => SelectedLocation?.Enabled == true ? "Disable" : "Enable";
     public string RecursiveToggleLabel => SelectedLocation?.Recursive == true ? "Recursive: On" : "Recursive: Off";

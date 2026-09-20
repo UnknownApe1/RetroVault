@@ -33,7 +33,7 @@ public partial class App : Application
         instanceMutex = new Mutex(true, @"Local\CozziForged.RomManager", out ownsInstanceMutex);
         if (!ownsInstanceMutex)
         {
-            MessageBox.Show("ROM Manager is already running. Only one instance can scan the library at a time.", "ROM Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("RetroVault is already running. Only one instance can scan the library at a time.", "RetroVault", MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown(0); return;
         }
         var appDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CozziForged", "RomManager");
@@ -44,7 +44,7 @@ public partial class App : Application
         DispatcherUnhandledException += (_, args) =>
         {
             WriteCrashLog(args.Exception);
-            MessageBox.Show("ROM Manager encountered an unexpected error. Your indexed data was preserved, and an interrupted scan will resume next time.", "ROM Manager", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show("RetroVault encountered an unexpected error. Your indexed data was preserved, and an interrupted scan will resume next time.", "RetroVault", MessageBoxButton.OK, MessageBoxImage.Error);
             args.Handled = true; Shutdown(1);
         };
         TaskScheduler.UnobservedTaskException += (_, args) => { WriteCrashLog(args.Exception); args.SetObserved(); };
@@ -82,7 +82,7 @@ public partial class App : Application
             window.Show();
             await ((MainViewModel)window.DataContext).InitializeAsync();
         }
-        catch (Exception ex) { MessageBox.Show(ex.ToString(), "ROM Manager could not start", MessageBoxButton.OK, MessageBoxImage.Error); Shutdown(1); }
+        catch (Exception ex) { MessageBox.Show(ex.ToString(), "RetroVault could not start", MessageBoxButton.OK, MessageBoxImage.Error); Shutdown(1); }
     }
 
     protected override async void OnExit(ExitEventArgs e)
@@ -132,7 +132,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"The pending database restore could not be applied. The existing library was left unchanged.{Environment.NewLine}{Environment.NewLine}{ex.Message}", "ROM Manager restore failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"The pending database restore could not be applied. The existing library was left unchanged.{Environment.NewLine}{Environment.NewLine}{ex.Message}", "RetroVault restore failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

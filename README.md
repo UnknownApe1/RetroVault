@@ -1,15 +1,15 @@
-# ROM Manager — Milestone 1
+# RetroVault — ROM Manager for Windows
 
-[![Latest beta release](https://img.shields.io/github/v/release/UnknownApe1/RomManager?include_prereleases&label=latest%20beta)](https://github.com/UnknownApe1/RomManager/releases/tag/v1.18.0-beta.1)
-[![Download for Windows](https://img.shields.io/badge/Download-Windows%20x64-1f883d?style=for-the-badge&logo=windows)](https://github.com/UnknownApe1/RomManager/releases/download/v1.18.0-beta.1/RomManager-v1.18.0-beta.1-win-x64.zip)
+[![Latest beta release](https://img.shields.io/github/v/release/UnknownApe1/RetroVault?include_prereleases&label=latest%20beta)](https://github.com/UnknownApe1/RetroVault/releases/tag/v1.18.0-beta.1)
+[![Download for Windows](https://img.shields.io/badge/Download-Windows%20x64-1f883d?style=for-the-badge&logo=windows)](https://github.com/UnknownApe1/RetroVault/releases/download/v1.18.0-beta.1/RomManager-v1.18.0-beta.1-win-x64.zip)
 
 ## Download the beta
 
-**[Open the v1.18.0-beta.1 release page](https://github.com/UnknownApe1/RomManager/releases/tag/v1.18.0-beta.1)** · **[Download the Windows x64 ZIP directly](https://github.com/UnknownApe1/RomManager/releases/download/v1.18.0-beta.1/RomManager-v1.18.0-beta.1-win-x64.zip)**
+**[Open the v1.18.0-beta.1 release page](https://github.com/UnknownApe1/RetroVault/releases/tag/v1.18.0-beta.1)** · **[Download the Windows x64 ZIP directly](https://github.com/UnknownApe1/RetroVault/releases/download/v1.18.0-beta.1/RomManager-v1.18.0-beta.1-win-x64.zip)**
 
 Extract the ZIP and run `RomManager.exe`. The **Packages** section on GitHub is unrelated to this Windows download; the ZIP is attached under the release’s **Assets** section.
 
-![ROM Manager interface](docs/rom-manager-screenshot.png)
+![RetroVault interface](docs/rom-manager-screenshot.png)
 
 A Windows 10/11 desktop application that safely indexes ROM and game files without moving, renaming, deleting, extracting, or modifying them.
 
